@@ -155,7 +155,7 @@ func registerHistoryEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) htt
 			_ = json.NewEncoder(w).Encode(SendMessageResponse{Success: false, Message: msg})
 		}
 
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeErr(http.StatusServiceUnavailable, "Not connected to WhatsApp")
 			return
 		}

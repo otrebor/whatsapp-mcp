@@ -153,7 +153,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "jid must be a group JID (…@g.us)"})
 			return
 		}
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeResp(http.StatusServiceUnavailable, map[string]interface{}{"success": false, "message": "Not connected to WhatsApp"})
 			return
 		}
@@ -206,7 +206,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": err.Error()})
 			return
 		}
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeResp(http.StatusServiceUnavailable, map[string]interface{}{"success": false, "message": "Not connected to WhatsApp"})
 			return
 		}
@@ -267,7 +267,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			writeResp(http.StatusBadRequest, false, "topic must be at most 2048 characters")
 			return
 		}
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeResp(http.StatusServiceUnavailable, false, "Not connected to WhatsApp")
 			return
 		}
@@ -320,7 +320,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			return
 		}
 
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeErr(http.StatusServiceUnavailable, "Not connected to WhatsApp")
 			return
 		}
@@ -368,7 +368,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			writeErr(http.StatusBadRequest, fmt.Sprintf("jid must be a group JID (…@g.us), got %q", raw))
 			return
 		}
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeErr(http.StatusServiceUnavailable, "Not connected to WhatsApp")
 			return
 		}

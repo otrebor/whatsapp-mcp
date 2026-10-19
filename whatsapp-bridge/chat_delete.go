@@ -48,7 +48,7 @@ func registerChatDeleteEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) 
 			writeResp(http.StatusBadRequest, false, "chat_jid must be a phone number or chat JID")
 			return
 		}
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			writeResp(http.StatusServiceUnavailable, false, "Not connected to WhatsApp")
 			return
 		}

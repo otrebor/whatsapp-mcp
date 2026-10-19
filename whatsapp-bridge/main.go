@@ -1437,7 +1437,7 @@ func resolveMentionJIDs(client *whatsmeow.Client, mentions []string) []string {
 
 // Function to send a WhatsApp message
 func sendWhatsAppMessage(client *whatsmeow.Client, messageStore *MessageStore, recipient string, message string, mediaPath string, quotedMsgID string, quotedSenderJID string, quotedContent string, mentions []string) (bool, string) {
-	if !client.IsConnected() {
+	if !whatsappReady(client) {
 		return false, "Not connected to WhatsApp"
 	}
 
@@ -2402,15 +2402,24 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	// Delete-chat-for-me endpoint (see chat_delete.go)
 	registerChatDeleteEndpoint(mux, auth, client, messageStore)
 
+	// Pairing QR code endpoint (see pairing.go)
+	registerPairingEndpoints(mux, auth)
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		pairing := bridgePairing.snapshot()
 		status := map[string]interface{}{
-			"status":    "ok",
-			"connected": client.IsConnected(),
-			"timestamp": time.Now().Unix(),
+			"status":        "ok",
+			"connected":     whatsappReady(client),
+			"logged_in":     client.Store.ID != nil,
+			"pairing_state": pairing.State,
+			"timestamp":     time.Now().Unix(),
 		}
-		if !client.IsConnected() {
+		if pairing.LastError != "" {
+			status["pairing_error"] = pairing.LastError
+		}
+		if !whatsappReady(client) {
 			status["status"] = "disconnected"
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
@@ -2461,6 +2470,10 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 				return
 			}
 			resolvedMediaPath = canonical
+		}
+
+		if !requireConnected(w, client) {
+			return
 		}
 
 		// Avoid logging req.Message verbatim — it's user content and may
@@ -2544,7 +2557,7 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(SendMessageResponse{
 				Success: false,
@@ -2636,6 +2649,9 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 			}
 			senderJID = chatJID
 		}
+		if !requireConnected(w, client) {
+			return
+		}
 		msg := client.BuildReaction(chatJID, senderJID, req.MessageID, *req.Emoji)
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := client.SendMessage(context.Background(), chatJID, msg); err != nil {
@@ -2655,7 +2671,7 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 		}
 
 		// Check if connected
-		if !client.IsConnected() {
+		if !whatsappReady(client) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(DownloadMediaResponse{
@@ -2764,6 +2780,10 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 			state = types.ChatPresenceComposing
 		} else {
 			state = types.ChatPresencePaused
+		}
+
+		if !requireConnected(w, client) {
+			return
 		}
 
 		// Send the chat presence update
@@ -3016,6 +3036,9 @@ func main() {
 	// Channel to signal reconnection needs
 	reconnectChan := make(chan bool, 1)
 
+	// Signalled on events.LoggedOut; see exitCodeLoggedOut.
+	loggedOutChan := make(chan struct{}, 1)
+
 	// Setup event handling for messages and history sync
 	client.AddEventHandler(func(evt interface{}) {
 		switch v := evt.(type) {
@@ -3109,7 +3132,12 @@ func main() {
 			logger.Infof("✓ Successfully connected to WhatsApp servers")
 
 		case *events.LoggedOut:
-			logger.Warnf("⚠️  Device logged out, please scan QR code to log in again")
+			logger.Warnf("⚠️  Device logged out (%v); exiting with code %d so a restart can show a new QR code", v.Reason, exitCodeLoggedOut)
+			bridgePairing.setState(pairingLoggedOut, fmt.Sprintf("logged out: %v", v.Reason))
+			select {
+			case loggedOutChan <- struct{}{}:
+			default:
+			}
 
 		case *events.Disconnected:
 			logger.Warnf("⚠️  Disconnected from WhatsApp servers, will attempt reconnection...")
@@ -3155,6 +3183,26 @@ func main() {
 		}
 	})
 
+	// Start the REST API before connecting so MCP clients can see the pairing
+	// state and fetch the QR code (/api/pairing/qr.png) while the bridge waits
+	// for a scan. Handlers that talk to WhatsApp return 503 until connected
+	// (requireConnected), and /api/health keeps returning 503 until then, so
+	// callers must use /api/health, not "port is open", as the readiness check.
+	//
+	// Resolve the allow-listed roots that media_path values in /api/send must
+	// live under. See media_path.go for the rationale.
+	allowedMediaRoots, mrErr := resolveMediaRoots()
+	if mrErr != nil {
+		logger.Errorf("Failed to resolve media roots: %v", mrErr)
+		return
+	}
+	logger.Infof("Allowed media roots: %v", allowedMediaRoots)
+
+	if client.Store.ID != nil {
+		bridgePairing.setState(pairingPaired, "")
+	}
+	startRESTServer(client, messageStore, port, bridgeToken, allowedMediaRoots)
+
 	// Create channel to track connection success
 	connected := make(chan bool, 1)
 
@@ -3174,6 +3222,7 @@ func main() {
 			qrChan, connErr := client.GetQRChannel(ctx)
 			if connErr != nil {
 				logger.Errorf("Failed to get QR channel: %v", connErr)
+				bridgePairing.setError(fmt.Sprintf("failed to get QR channel: %v", connErr))
 				if attempt == maxRetries {
 					return
 				}
@@ -3191,14 +3240,18 @@ func main() {
 				continue
 			}
 
-			// Print QR codes for pairing with the phone.
+			// Print QR codes for pairing with the phone, and publish each one
+			// to /api/pairing/qr.png.
 			switch renderPairingQRCodes(qrChan, os.Stdout, func(code string, w io.Writer) {
+				bridgePairing.setCode(code)
 				qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
 			}) {
 			case pairingQRSucceeded:
+				bridgePairing.setState(pairingPaired, "")
 				connected <- true
 			case pairingQRTimedOut:
 				logger.Warnf("QR code timed out")
+				bridgePairing.setState(pairingTimedOut, "QR code timed out")
 			case pairingQRChannelClosed:
 			}
 
@@ -3209,6 +3262,7 @@ func main() {
 				goto connectionSuccess
 			case <-ctx.Done():
 				logger.Errorf("Timeout waiting for QR code scan (attempt %d)", attempt)
+				bridgePairing.setState(pairingTimedOut, "timed out waiting for QR code scan")
 				client.Disconnect()
 				if attempt == maxRetries {
 					return
@@ -3239,24 +3293,16 @@ connectionSuccess:
 
 	if !client.IsConnected() {
 		logger.Errorf("Failed to establish stable connection")
+		select {
+		case <-loggedOutChan:
+			// A stored session the phone already unlinked fails on connect.
+			exitAfterLogout(client, messageStore)
+		default:
+		}
 		return
 	}
 
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
-
-	// port and bridgeToken were already resolved above, before the connect/
-	// pairing loop, so the setup banner could print immediately.
-
-	// Resolve the allow-listed roots that media_path values in /api/send must
-	// live under. See media_path.go for the rationale.
-	allowedMediaRoots, mrErr := resolveMediaRoots()
-	if mrErr != nil {
-		logger.Errorf("Failed to resolve media roots: %v", mrErr)
-		return
-	}
-	logger.Infof("Allowed media roots: %v", allowedMediaRoots)
-
-	startRESTServer(client, messageStore, port, bridgeToken, allowedMediaRoots)
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)
@@ -3308,12 +3354,25 @@ connectionSuccess:
 		}
 	}()
 
-	// Wait for termination signal
-	<-exitChan
+	// Wait for termination signal, or a logout that needs a fresh process
+	select {
+	case <-exitChan:
+	case <-loggedOutChan:
+		exitAfterLogout(client, messageStore)
+	}
 
 	fmt.Println("Disconnecting...")
 	// Disconnect client
 	client.Disconnect()
+}
+
+// exitAfterLogout shuts down and exits with exitCodeLoggedOut. Deferred
+// cleanup in main does not run after os.Exit, so close the store here.
+func exitAfterLogout(client *whatsmeow.Client, messageStore *MessageStore) {
+	fmt.Printf("Logged out of WhatsApp; restart the bridge to link again (exit code %d).\n", exitCodeLoggedOut)
+	client.Disconnect()
+	_ = messageStore.Close()
+	os.Exit(exitCodeLoggedOut)
 }
 
 // GetChatName determines the appropriate name for a chat based on JID and other info
