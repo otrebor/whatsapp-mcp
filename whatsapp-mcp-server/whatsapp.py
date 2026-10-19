@@ -1361,6 +1361,22 @@ def set_group_description(group_jid: str, description: str) -> dict[str, Any]:
         return {"success": False, "message": f"Request error: {str(e)}"}
 
 
+def delete_chat(chat_jid: str) -> dict[str, Any]:
+    """Delete a chat for the user only (all own devices); the other side keeps theirs."""
+    chat_jid = chat_jid.strip().lstrip("+")
+    if not chat_jid:
+        return {"success": False, "message": "Chat JID must be provided"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/chat-delete",
+            json={"chat_jid": chat_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
 def create_group(name: str, participants: list[str]) -> dict[str, Any]:
     """Create a WhatsApp group through the bridge. The caller becomes admin."""
     name = name.strip()

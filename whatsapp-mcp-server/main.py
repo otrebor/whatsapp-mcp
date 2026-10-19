@@ -22,6 +22,9 @@ from whatsapp import (
     create_group as whatsapp_create_group,
 )
 from whatsapp import (
+    delete_chat as whatsapp_delete_chat,
+)
+from whatsapp import (
     download_media as whatsapp_download_media,
 )
 from whatsapp import (
@@ -467,6 +470,23 @@ def get_group_invite_link(group_jid: str) -> dict[str, Any]:
         A dictionary with success, jid and link (https://chat.whatsapp.com/...)
     """
     return whatsapp_get_group_invite_link(group_jid)
+
+
+@mcp.tool()
+def delete_chat(chat_jid: str) -> dict[str, Any]:
+    """Delete a WhatsApp chat for yourself only ("delete for me").
+
+    Destructive and not undoable: the chat and its media are removed from all of
+    your devices (phone included) and from the local message store. The other
+    person or group keeps their copy.
+
+    Args:
+        chat_jid: The chat JID, or a phone number with country code but no +
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    return whatsapp_delete_chat(chat_jid)
 
 
 @mcp.tool()

@@ -88,6 +88,25 @@ def test_add_group_participants_validates_before_calling_bridge(monkeypatch):
     assert calls == []
 
 
+def test_delete_chat_calls_bridge(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={"success": True, "message": "deleted"}))
+
+    result = whatsapp.delete_chat(" +41791234567 ")
+
+    assert result["success"] is True
+    assert calls[0]["url"].endswith("/chat-delete")
+    assert calls[0]["json"] == {"chat_jid": "41791234567"}
+
+
+def test_delete_chat_requires_jid(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={}))
+
+    assert whatsapp.delete_chat(" ")["success"] is False
+    assert calls == []
+
+
 def test_set_group_description_calls_bridge(monkeypatch):
     calls = []
     _capture(monkeypatch, "post", calls, DummyResponse(payload={"success": True, "message": "ok"}))

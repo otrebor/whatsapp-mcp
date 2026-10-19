@@ -247,6 +247,20 @@ and never resets it; anyone with the link can join.
 
 - "Get me the invite link for the Gift for Anna group"
 
+#### `delete_chat`
+
+Delete a chat for yourself only ("delete for me"). The chat and its media are
+removed from all your devices, including your phone, and from `messages.db`; the
+other person or group keeps their copy. Destructive and not undoable.
+
+**Parameters:**
+
+- `chat_jid` (required): Chat JID, or a phone number with country code but no `+`
+
+**Natural Language Examples:**
+
+- "Delete my chat with +41791234567, only on my side"
+
 #### `add_group_participants`
 
 Add members to a group you are an admin of. They are added immediately and see
@@ -967,10 +981,11 @@ flowchart LR
         TYPE["/api/typing"]
         HIST["/api/history"]
         GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
+        CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
     end
 
-    subgraph MCPTools["MCP Tools (22 total)"]
+    subgraph MCPTools["MCP Tools (23 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
