@@ -1278,6 +1278,40 @@ def _group_response(response: requests.Response) -> dict[str, Any]:
     return result
 
 
+def bridge_status() -> dict[str, Any]:
+    """Check that the bridge is reachable and logged in to WhatsApp.
+
+    Reads go straight to SQLite, so they succeed with the bridge down; this is
+    the only cheap way to know whether sends will work.
+    """
+    try:
+        response = requests.get(f"{WHATSAPP_API_BASE_URL}/health", headers=_bridge_headers(), timeout=5)
+    except requests.RequestException as e:
+        return {
+            "reachable": False,
+            "connected": False,
+            "message": f"Bridge not reachable at {WHATSAPP_API_BASE_URL}: {e}",
+        }
+    if response.status_code == 401:
+        return {"reachable": True, "connected": False, "message": "Bridge rejected the auth token (HTTP 401)"}
+    try:
+        result = response.json()
+    except ValueError:
+        return {
+            "reachable": True,
+            "connected": False,
+            "message": f"Error: HTTP {response.status_code} - {response.text}",
+        }
+    connected = bool(result.get("connected"))
+    return {
+        "reachable": True,
+        "connected": connected,
+        "message": "Bridge is connected to WhatsApp"
+        if connected
+        else "Bridge is running but not connected to WhatsApp (offline or logged out)",
+    }
+
+
 def get_group_participants(group_jid: str) -> dict[str, Any]:
     """Fetch a group's current members from WhatsApp through the bridge."""
     group_jid = group_jid.strip()

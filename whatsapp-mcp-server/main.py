@@ -19,6 +19,9 @@ from whatsapp import (
     add_group_participants as whatsapp_add_group_participants,
 )
 from whatsapp import (
+    bridge_status as whatsapp_bridge_status,
+)
+from whatsapp import (
     create_group as whatsapp_create_group,
 )
 from whatsapp import (
@@ -436,6 +439,21 @@ def mark_messages_read(
     """
     success, status_message = whatsapp_mark_messages_read(message_ids, chat_jid, sender_jid, timestamp)
     return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def bridge_status() -> dict[str, Any]:
+    """Check whether the WhatsApp bridge is up and connected.
+
+    Read tools query the local database and work even when the bridge is down;
+    sending, group and media tools need it. Call this before a workflow that
+    sends anything.
+
+    Returns:
+        A dictionary with reachable (bridge answered), connected (logged in to
+        WhatsApp) and a human-readable message
+    """
+    return whatsapp_bridge_status()
 
 
 @mcp.tool()
