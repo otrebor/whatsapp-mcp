@@ -16,6 +16,12 @@ from whatsapp import (
     msg_to_dict,
 )
 from whatsapp import (
+    add_group_participants as whatsapp_add_group_participants,
+)
+from whatsapp import (
+    create_group as whatsapp_create_group,
+)
+from whatsapp import (
     download_media as whatsapp_download_media,
 )
 from whatsapp import (
@@ -65,6 +71,9 @@ from whatsapp import (
 )
 from whatsapp import (
     send_reaction as whatsapp_send_reaction,
+)
+from whatsapp import (
+    set_group_description as whatsapp_set_group_description,
 )
 
 # Initialize FastMCP server. Env-var handling is deferred to the __main__ block
@@ -458,6 +467,63 @@ def get_group_invite_link(group_jid: str) -> dict[str, Any]:
         A dictionary with success, jid and link (https://chat.whatsapp.com/...)
     """
     return whatsapp_get_group_invite_link(group_jid)
+
+
+@mcp.tool()
+def add_group_participants(group_jid: str, participants: list[str]) -> dict[str, Any]:
+    """Add members to a WhatsApp group you are an admin of.
+
+    This is an explicit external side effect: members are added immediately and
+    see the group.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+        participants: Members to add, as phone numbers with country code but no +
+                      (e.g. ["41791234567"]) or JIDs
+
+    Returns:
+        A dictionary with success, message, added (count) and failed (members
+        WhatsApp refused, e.g. because of their privacy settings, with error code)
+    """
+    return whatsapp_add_group_participants(group_jid, participants)
+
+
+@mcp.tool()
+def set_group_description(group_jid: str, description: str) -> dict[str, Any]:
+    """Set the description of a WhatsApp group.
+
+    This is an explicit external side effect: all members see the new
+    description. Pass an empty string to clear it.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+        description: The new description, at most 2048 characters. WhatsApp
+                     formatting (*bold*, _italic_) is supported.
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    return whatsapp_set_group_description(group_jid, description)
+
+
+@mcp.tool()
+def create_group(name: str, participants: list[str]) -> dict[str, Any]:
+    """Create a new WhatsApp group. You are added automatically as admin.
+
+    This is an explicit external side effect: participants are added straight
+    away and see the new group.
+
+    Args:
+        name: The group name (subject), at most 100 characters
+        participants: Members to add, as phone numbers with country code but no +
+                      (e.g. ["41791234567"]) or JIDs
+
+    Returns:
+        A dictionary with success, jid, name and participants (same shape as
+        get_group_participants). If WhatsApp refused some members (e.g. privacy
+        settings), message lists them.
+    """
+    return whatsapp_create_group(name, participants)
 
 
 @mcp.tool()

@@ -247,6 +247,49 @@ and never resets it; anyone with the link can join.
 
 - "Get me the invite link for the Gift for Anna group"
 
+#### `add_group_participants`
+
+Add members to a group you are an admin of. They are added immediately and see
+the group, so this is an explicit external side effect. Members WhatsApp refuses
+(e.g. because of their privacy settings) are listed in `failed`.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+- `participants` (required): Phone numbers with country code but no `+`, or JIDs
+
+**Natural Language Examples:**
+
+- "Add Bob and Carol to the Gift for Anna group"
+
+#### `set_group_description`
+
+Set (or clear, with an empty string) a group's description. All members see the
+change, so this is an explicit external side effect.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+- `description` (required): New description, at most 2048 characters
+
+**Natural Language Examples:**
+
+- "Set the description of the Gift for Anna group to the welcome text"
+
+#### `create_group`
+
+Create a new group with the given members; you are added as admin. Members are
+added immediately and see the group, so this is an explicit external side effect.
+
+**Parameters:**
+
+- `name` (required): Group name, at most 100 characters
+- `participants` (required): Phone numbers with country code but no `+`, or JIDs
+
+**Natural Language Examples:**
+
+- "Create a group called 'Gift for Anna' with Bob and Carol"
+
 #### `send_reaction`
 
 Send (or remove) an emoji reaction to a message.
@@ -923,11 +966,11 @@ flowchart LR
         REACT["/api/react"]
         TYPE["/api/typing"]
         HIST["/api/history"]
-        GROUP["/api/group-info,<br/>/api/group-invite-link"]
+        GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
         HEALTH["/api/health"]
     end
 
-    subgraph MCPTools["MCP Tools (19 total)"]
+    subgraph MCPTools["MCP Tools (22 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
