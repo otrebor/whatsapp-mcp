@@ -55,4 +55,5 @@ htmlcov/
 /store
 
 # Personal notes
-/birthdays/
+/birthdays/*
+!/birthdays/templates/
