@@ -219,6 +219,91 @@ automatically.
 - "Mark those messages as read"
 - "Mark the last three messages from Alice in the team group as read"
 
+#### `get_group_participants`
+
+Get the current member list of a group, straight from WhatsApp (requires the
+bridge). Includes members who have never posted, with phone number, name and
+admin flags.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID (e.g. `120363414691944010@g.us`); a bare ID is accepted
+
+**Natural Language Examples:**
+
+- "Who is in the Book Club group?"
+- "Export the members of the birthday group to a CSV"
+
+#### `get_group_invite_link`
+
+Get the invite link of a group you are an admin of. Returns the existing link
+and never resets it; anyone with the link can join.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+
+**Natural Language Examples:**
+
+- "Get me the invite link for the Gift for Anna group"
+
+#### `delete_chat`
+
+Delete a chat for yourself only ("delete for me"). The chat and its media are
+removed from all your devices, including your phone, and from `messages.db`; the
+other person or group keeps their copy. Destructive and not undoable.
+
+**Parameters:**
+
+- `chat_jid` (required): Chat JID, or a phone number with country code but no `+`
+
+**Natural Language Examples:**
+
+- "Delete my chat with +41791234567, only on my side"
+
+#### `add_group_participants`
+
+Add members to a group you are an admin of. They are added immediately and see
+the group, so this is an explicit external side effect. Members WhatsApp refuses
+(e.g. because of their privacy settings) are listed in `failed`.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+- `participants` (required): Phone numbers with country code but no `+`, or JIDs
+
+**Natural Language Examples:**
+
+- "Add Bob and Carol to the Gift for Anna group"
+
+#### `set_group_description`
+
+Set (or clear, with an empty string) a group's description. All members see the
+change, so this is an explicit external side effect.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+- `description` (required): New description, at most 2048 characters
+
+**Natural Language Examples:**
+
+- "Set the description of the Gift for Anna group to the welcome text"
+
+#### `create_group`
+
+Create a new group with the given members; you are added as admin. Members are
+added immediately and see the group, so this is an explicit external side effect.
+
+**Parameters:**
+
+- `name` (required): Group name, at most 100 characters
+- `participants` (required): Phone numbers with country code but no `+`, or JIDs
+
+**Natural Language Examples:**
+
+- "Create a group called 'Gift for Anna' with Bob and Carol"
+
 #### `send_reaction`
 
 Send (or remove) an emoji reaction to a message.
@@ -895,10 +980,12 @@ flowchart LR
         REACT["/api/react"]
         TYPE["/api/typing"]
         HIST["/api/history"]
+        GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
+        CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
     end
 
-    subgraph MCPTools["MCP Tools (15 total)"]
+    subgraph MCPTools["MCP Tools (23 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]

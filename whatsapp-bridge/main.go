@@ -2396,6 +2396,12 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	// On-demand history sync endpoint (see history_ondemand.go)
 	registerHistoryEndpoint(mux, auth, client, messageStore)
 
+	// Group member list endpoint (see group_info.go)
+	registerGroupInfoEndpoint(mux, auth, client)
+
+	// Delete-chat-for-me endpoint (see chat_delete.go)
+	registerChatDeleteEndpoint(mux, auth, client, messageStore)
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

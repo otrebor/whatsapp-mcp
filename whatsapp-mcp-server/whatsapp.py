@@ -1266,6 +1266,136 @@ def mark_messages_read(
         return False, f"Unexpected error: {str(e)}"
 
 
+def _group_response(response: requests.Response) -> dict[str, Any]:
+    """Decode a /group-* bridge reply; error bodies are JSON with a message too."""
+    try:
+        result = response.json()
+    except ValueError:
+        return {"success": False, "message": f"Error: HTTP {response.status_code} - {response.text}"}
+    if response.status_code != 200 and "message" not in result:
+        result["message"] = f"Error: HTTP {response.status_code}"
+    result.setdefault("success", False)
+    return result
+
+
+def get_group_participants(group_jid: str) -> dict[str, Any]:
+    """Fetch a group's current members from WhatsApp through the bridge."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.get(
+            f"{WHATSAPP_API_BASE_URL}/group-info",
+            params={"jid": group_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def get_group_invite_link(group_jid: str) -> dict[str, Any]:
+    """Fetch a group's current invite link through the bridge (admins only; never resets it)."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.get(
+            f"{WHATSAPP_API_BASE_URL}/group-invite-link",
+            params={"jid": group_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def add_group_participants(group_jid: str, participants: list[str]) -> dict[str, Any]:
+    """Add members to an existing group through the bridge (caller must be admin)."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    members = [p.strip().lstrip("+") for p in participants]
+    if not members or any(not p for p in members):
+        return {"success": False, "message": "At least one non-empty participant must be provided"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-participants-add",
+            json={"jid": group_jid, "participants": members},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def set_group_description(group_jid: str, description: str) -> dict[str, Any]:
+    """Set (or clear, with an empty string) a group's description through the bridge."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-topic",
+            json={"jid": group_jid, "topic": description},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def delete_chat(chat_jid: str) -> dict[str, Any]:
+    """Delete a chat for the user only (all own devices); the other side keeps theirs."""
+    chat_jid = chat_jid.strip().lstrip("+")
+    if not chat_jid:
+        return {"success": False, "message": "Chat JID must be provided"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/chat-delete",
+            json={"chat_jid": chat_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def create_group(name: str, participants: list[str]) -> dict[str, Any]:
+    """Create a WhatsApp group through the bridge. The caller becomes admin."""
+    name = name.strip()
+    if not name:
+        return {"success": False, "message": "Group name must be provided"}
+    members = [p.strip().lstrip("+") for p in participants]
+    if not members or any(not p for p in members):
+        return {"success": False, "message": "At least one non-empty participant must be provided"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-create",
+            json={"name": name, "participants": members},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
 def download_media(message_id: str, chat_jid: str) -> str | None:
     """Download media from a message and return the local file path.
 
