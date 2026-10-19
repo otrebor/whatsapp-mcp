@@ -53,6 +53,3 @@ build/
 .coverage
 htmlcov/
 /store
-
-# Personal notes
-/birthdays/
