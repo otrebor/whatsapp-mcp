@@ -22,9 +22,19 @@ bridge calls prove it's up. Stop on any failure below, before asking for inputs.
 
 - **MCP tools**: if the `whatsapp` tools aren't available, tell the user to
   start/connect the WhatsApp MCP server.
-- **Bridge**: if `bridge_status` exists, call it; anything but
-  `connected: true` → stop and say the bridge isn't reachable/connected
-  (start it with `cd whatsapp-bridge && go run .`, re-pair if logged out).
+- **Bridge**: if `bridge_status` exists, call it:
+  - `connected: true` → continue.
+  - `reachable: false` → start it in a visible window
+    (`cd whatsapp-bridge && go run .`), then call `bridge_status` again.
+  - `pairing_state: awaiting_scan` → call `get_pairing_qr` (pass
+    `open_viewer: true` if you can't show images), ask the user to scan it,
+    and poll `bridge_status` every ~10s until `connected: true`. Call
+    `get_pairing_qr` again when a code expires. Stop after 5 minutes (the
+    bridge's QR timeout).
+  - `logged_out` → the bridge exits; start it again, then pair as above.
+  - `logged_in: true` but not connected → wait ~30s for the reconnect and
+    check again once; still down → stop and say so.
+  - Anything else → stop and say the bridge isn't connected.
   Without that tool, the source-group `get_group_participants` call in step 1
   is the bridge check.
 - **Freshness**: `list_chats(limit=1)`; if the newest message is hours old,
