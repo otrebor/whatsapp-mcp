@@ -219,6 +219,18 @@ automatically.
 - "Mark those messages as read"
 - "Mark the last three messages from Alice in the team group as read"
 
+#### `bridge_status`
+
+Check whether the bridge is reachable and logged in to WhatsApp. Read tools work
+from the local database even when the bridge is down, so call this before
+sending anything.
+
+**Parameters:** none
+
+**Natural Language Examples:**
+
+- "Is the WhatsApp bridge running?"
+
 #### `get_group_participants`
 
 Get the current member list of a group, straight from WhatsApp (requires the
