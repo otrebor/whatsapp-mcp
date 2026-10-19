@@ -1303,13 +1303,69 @@ def bridge_status() -> dict[str, Any]:
             "message": f"Error: HTTP {response.status_code} - {response.text}",
         }
     connected = bool(result.get("connected"))
-    return {
+    # Older bridges omit logged_in and pairing_state; report them as None.
+    logged_in = result.get("logged_in")
+    pairing_state = result.get("pairing_state")
+    status = {
         "reachable": True,
         "connected": connected,
-        "message": "Bridge is connected to WhatsApp"
-        if connected
-        else "Bridge is running but not connected to WhatsApp (offline or logged out)",
+        "logged_in": logged_in,
+        "pairing_state": pairing_state,
+        "message": _bridge_status_message(connected, logged_in, pairing_state),
     }
+    if result.get("pairing_error"):
+        status["pairing_error"] = result["pairing_error"]
+    return status
+
+
+def _bridge_status_message(connected: bool, logged_in: bool | None, pairing_state: str | None) -> str:
+    if connected:
+        return "Bridge is connected to WhatsApp"
+    if pairing_state == "awaiting_scan":
+        return "Bridge is waiting for a QR scan; call get_pairing_qr to show the code"
+    if pairing_state == "logged_out":
+        return "Bridge was logged out by the phone and is exiting; restart it to link again"
+    if pairing_state == "timed_out":
+        return "QR code expired before it was scanned; the bridge retries shortly, or restart it"
+    if pairing_state == "starting":
+        return "Bridge is starting and not connected yet"
+    if logged_in:
+        return "Bridge is linked but temporarily disconnected from WhatsApp; it reconnects automatically"
+    return "Bridge is running but not connected to WhatsApp (offline or logged out)"
+
+
+def get_pairing_qr() -> dict[str, Any]:
+    """Fetch the live pairing QR code from the bridge.
+
+    Returns a dict with success and message; on success also png (bytes) and
+    seq (increments each time WhatsApp rotates the code).
+    """
+    try:
+        response = requests.get(f"{WHATSAPP_API_BASE_URL}/pairing/qr.png", headers=_bridge_headers(), timeout=5)
+    except requests.RequestException:
+        # Same shape and wording as bridge_status for an unreachable bridge.
+        status = bridge_status()
+        return {"success": False, **status}
+    if response.status_code == 200:
+        return {
+            "success": True,
+            "message": "Pairing QR code",
+            "png": response.content,
+            "seq": response.headers.get("X-Pairing-Seq"),
+        }
+    if response.status_code == 401:
+        return {"success": False, "message": "Bridge rejected the auth token (HTTP 401)"}
+
+    status = bridge_status()
+    if status.get("connected") or status.get("pairing_state") == "paired":
+        return {**status, "success": True, "message": "already linked"}
+    if response.status_code == 404 and status.get("pairing_state") is None:
+        return {
+            **status,
+            "success": False,
+            "message": "This bridge version cannot serve the pairing QR code; scan the code in its terminal",
+        }
+    return {"success": False, **status}
 
 
 def get_group_participants(group_jid: str) -> dict[str, Any]:

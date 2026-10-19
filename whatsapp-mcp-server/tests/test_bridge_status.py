@@ -57,3 +57,48 @@ def test_bridge_status_bad_token(monkeypatch):
     assert result["reachable"] is True
     assert result["connected"] is False
     assert "401" in result["message"]
+
+
+def test_bridge_status_awaiting_scan(monkeypatch):
+    payload = {"status": "disconnected", "connected": False, "logged_in": False, "pairing_state": "awaiting_scan"}
+    _fake_get(monkeypatch, [], DummyResponse(status_code=503, payload=payload))
+
+    result = whatsapp.bridge_status()
+
+    assert result["logged_in"] is False
+    assert result["pairing_state"] == "awaiting_scan"
+    assert "get_pairing_qr" in result["message"]
+
+
+def test_bridge_status_linked_but_offline(monkeypatch):
+    payload = {"status": "disconnected", "connected": False, "logged_in": True, "pairing_state": "paired"}
+    _fake_get(monkeypatch, [], DummyResponse(status_code=503, payload=payload))
+
+    result = whatsapp.bridge_status()
+
+    assert result["logged_in"] is True
+    assert "temporarily disconnected" in result["message"]
+
+
+def test_bridge_status_logged_out_keeps_error(monkeypatch):
+    payload = {
+        "connected": False,
+        "logged_in": False,
+        "pairing_state": "logged_out",
+        "pairing_error": "logged out: 401",
+    }
+    _fake_get(monkeypatch, [], DummyResponse(status_code=503, payload=payload))
+
+    result = whatsapp.bridge_status()
+
+    assert "restart" in result["message"]
+    assert result["pairing_error"] == "logged out: 401"
+
+
+def test_bridge_status_old_bridge_without_pairing_fields(monkeypatch):
+    _fake_get(monkeypatch, [], DummyResponse(status_code=503, payload={"connected": False}))
+
+    result = whatsapp.bridge_status()
+
+    assert result["logged_in"] is None
+    assert result["pairing_state"] is None

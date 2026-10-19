@@ -1,7 +1,7 @@
 # Plan: link WhatsApp via QR code from the MCP client
 
-Status: draft, needs an issue before implementation (see `AGENTS.md`: >300 LOC
-and a bridge startup change).
+Status: implemented on `feat/qr-pairing`. Phase 3 took the fallback (see
+below): there is no `POST /api/pairing/start`.
 
 ## Problem
 
@@ -126,6 +126,14 @@ Call this out in each bridge PR body (`AGENTS.md` rule 8).
    `Store.ID` on `LoggedOut` and accepts a new `GetQRChannel` + `Connect` on
    the same `*whatsmeow.Client`. If it doesn't, fall back to exiting with a
    distinct code so a supervisor restarts the bridge, and document that.
+
+   **Outcome:** it doesn't. `Device.Delete` clears `ID` but sets `Deleted`,
+   and `Connect` then returns `store.ErrDeviceDeleted`. The client's app-state
+   processor also holds the old store, so swapping `client.Store` is unsafe.
+   The bridge now records `logged_out` and exits with code 3; launchd
+   `KeepAlive` / systemd `Restart=on-failure` or the skill restart it into
+   `awaiting_scan`. `get_pairing_qr` reports the logout instead of calling
+   `/pairing/start`.
 4. **MCP: `bridge_status` fields + `get_pairing_qr`.** Tool, README section,
    tests.
 5. **Skill preflight** uses `get_pairing_qr`.

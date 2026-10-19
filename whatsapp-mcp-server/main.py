@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP, Image
 from pydantic import Field
 
 import media_preview
+import pairing_viewer
 import transcription
 from mcp_config import resolve_host, resolve_port, resolve_transport
 from parent_watchdog import install_stdio_parent_watchdog
@@ -50,6 +51,9 @@ from whatsapp import (
 )
 from whatsapp import (
     get_message_context as whatsapp_get_message_context,
+)
+from whatsapp import (
+    get_pairing_qr as whatsapp_get_pairing_qr,
 )
 from whatsapp import (
     get_sender_name as whatsapp_get_sender_name,
@@ -450,10 +454,53 @@ def bridge_status() -> dict[str, Any]:
     sends anything.
 
     Returns:
-        A dictionary with reachable (bridge answered), connected (logged in to
-        WhatsApp) and a human-readable message
+        A dictionary with reachable (bridge answered), connected (online and
+        logged in to WhatsApp), logged_in (a session is stored, even if offline),
+        pairing_state (starting, awaiting_scan, timed_out, logged_out or paired;
+        None for older bridges) and a human-readable message
     """
     return whatsapp_bridge_status()
+
+
+@mcp.tool()
+def get_pairing_qr(open_viewer: bool = False) -> Any:
+    """Show the QR code that links the bridge to WhatsApp.
+
+    Use when bridge_status reports pairing_state "awaiting_scan". Show the image
+    to the user, who scans it in WhatsApp > Settings > Linked Devices > Link a
+    device. Codes rotate about every 20s; call again if it expired. Then poll
+    bridge_status until connected is true.
+
+    The image is a live login code: anyone who scans it before it expires can
+    link their own WhatsApp account to this bridge. It expires within about a
+    minute, but treat it as sensitive and do not repeat it elsewhere.
+
+    Args:
+        open_viewer: Also open the image in the OS image viewer, for clients
+            that can't display images. Writes a temporary file that is deleted
+            on the next call
+
+    Returns:
+        The QR image plus instructions, or a dictionary explaining why there is
+        no code (already linked, bridge not running, logged out, ...)
+    """
+    result = whatsapp_get_pairing_qr()
+    if "png" not in result:
+        pairing_viewer.cleanup()
+        return result
+
+    instructions = (
+        f"Pairing QR code #{result.get('seq') or '?'}. Scan in WhatsApp > Settings > Linked Devices > "
+        "Link a device. Codes rotate about every 20s; call get_pairing_qr again if it expired. "
+        "Poll bridge_status until connected is true."
+    )
+    if open_viewer:
+        try:
+            path = pairing_viewer.show(result["png"])
+            instructions += f" Opened in the image viewer: {path}"
+        except OSError as exc:
+            instructions += f" Could not open an image viewer: {exc}"
+    return [Image(data=result["png"], format="png"), instructions]
 
 
 @mcp.tool()

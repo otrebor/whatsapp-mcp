@@ -56,7 +56,9 @@ A Model Context Protocol (MCP) server for WhatsApp, enabling Claude to read and 
 
    On first start, the bridge prints and stores a local REST API token at
    `whatsapp-bridge/store/.bridge-token`. Scan the QR code with WhatsApp on
-   your phone to authenticate.
+   your phone to authenticate. If you can't see the terminal (launchd,
+   systemd, a hidden window), ask your MCP client to call `get_pairing_qr`
+   instead: the REST API starts before pairing and serves the current code.
 
 3. **Configure Claude Desktop**
 
@@ -225,11 +227,37 @@ Check whether the bridge is reachable and logged in to WhatsApp. Read tools work
 from the local database even when the bridge is down, so call this before
 sending anything.
 
+Besides `reachable` and `connected`, it reports `logged_in` (a session is
+stored, even while offline) and `pairing_state`: `starting`, `awaiting_scan`,
+`timed_out`, `logged_out` or `paired` (`None` for older bridges).
+
 **Parameters:** none
 
 **Natural Language Examples:**
 
 - "Is the WhatsApp bridge running?"
+
+#### `get_pairing_qr`
+
+Show the QR code that links the bridge to WhatsApp, as an image, when
+`bridge_status` reports `pairing_state: awaiting_scan`. Scan it in WhatsApp >
+Settings > Linked Devices > Link a device, then poll `bridge_status` until
+`connected` is true. Codes rotate about every 20 seconds; call again for the
+current one. Returns "already linked" when there is nothing to scan.
+
+The image is a live login code and passes through your MCP client (and possibly
+the model transcript). It expires within about a minute, but anyone who scans
+it first can link their own account to your bridge, so don't share it.
+
+**Parameters:**
+
+- `open_viewer` (optional, default `false`): also open the image in the OS
+  image viewer, for clients that can't display images. The temporary file is
+  deleted on the next call.
+
+**Natural Language Examples:**
+
+- "Link WhatsApp" / "Show me the WhatsApp QR code"
 
 #### `get_group_participants`
 
@@ -995,9 +1023,10 @@ flowchart LR
         GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
         CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
+        PAIR["/api/pairing/qr.png"]
     end
 
-    subgraph MCPTools["MCP Tools (23 total)"]
+    subgraph MCPTools["MCP Tools (25 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
@@ -1096,7 +1125,16 @@ are documented in [docs/RELEASING.md](docs/RELEASING.md).
   release and rebuild the bridge. WhatsApp periodically raises the minimum
   supported linked-device client version, which can make older whatsmeow builds
   fail before pairing completes.
-- **QR Code Not Displaying**: Restart the bridge. Check terminal QR code support.
+- **QR Code Not Displaying**: Call `get_pairing_qr` from your MCP client, or
+  fetch `GET /api/pairing/qr.png` with the bridge token. Otherwise restart the
+  bridge and check terminal QR code support.
+- **Bridge exits with code 3**: the phone unlinked it (logged out). whatsmeow
+  deletes the session and can't re-pair in the same process, so the bridge
+  exits. Start it again (launchd `KeepAlive` and systemd `Restart=on-failure`
+  do this for you) and scan the new code.
+- **Port open but sends fail with 503 `not connected to WhatsApp`**: the REST
+  API starts before pairing, so an open port doesn't mean the bridge is ready.
+  Use `/api/health` (or `bridge_status`), which returns 503 until connected.
 - **Phone says "check your connection" after scanning**: WhatsApp answers a scan
   with a `companion_reg_refresh` notification, whatsmeow rotates the pairing
   secret, and the bridge prints a **new** QR code marked `QR code refreshed`.
