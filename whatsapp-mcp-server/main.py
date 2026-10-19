@@ -28,6 +28,12 @@ from whatsapp import (
     get_direct_chat_by_contact as whatsapp_get_direct_chat_by_contact,
 )
 from whatsapp import (
+    get_group_invite_link as whatsapp_get_group_invite_link,
+)
+from whatsapp import (
+    get_group_participants as whatsapp_get_group_participants,
+)
+from whatsapp import (
     get_last_interaction as whatsapp_get_last_interaction,
 )
 from whatsapp import (
@@ -418,6 +424,40 @@ def mark_messages_read(
     """
     success, status_message = whatsapp_mark_messages_read(message_ids, chat_jid, sender_jid, timestamp)
     return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def get_group_participants(group_jid: str) -> dict[str, Any]:
+    """Get the current member list of a WhatsApp group.
+
+    Asks WhatsApp directly (requires the bridge), so it includes members who
+    have never posted. Use list_chats to find the group JID.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+
+    Returns:
+        A dictionary with success, jid, name, topic and participants. Each
+        participant has jid, phone_number, lid, name, is_admin and is_super_admin.
+        phone_number may be missing when WhatsApp hides it.
+    """
+    return whatsapp_get_group_participants(group_jid)
+
+
+@mcp.tool()
+def get_group_invite_link(group_jid: str) -> dict[str, Any]:
+    """Get the invite link of a WhatsApp group you are an admin of.
+
+    Returns the existing link; it never resets it. Anyone with the link can
+    join, so share it deliberately.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+
+    Returns:
+        A dictionary with success, jid and link (https://chat.whatsapp.com/...)
+    """
+    return whatsapp_get_group_invite_link(group_jid)
 
 
 @mcp.tool()

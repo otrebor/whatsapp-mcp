@@ -1266,6 +1266,58 @@ def mark_messages_read(
         return False, f"Unexpected error: {str(e)}"
 
 
+def _group_response(response: requests.Response) -> dict[str, Any]:
+    """Decode a /group-* bridge reply; error bodies are JSON with a message too."""
+    try:
+        result = response.json()
+    except ValueError:
+        return {"success": False, "message": f"Error: HTTP {response.status_code} - {response.text}"}
+    if response.status_code != 200 and "message" not in result:
+        result["message"] = f"Error: HTTP {response.status_code}"
+    result.setdefault("success", False)
+    return result
+
+
+def get_group_participants(group_jid: str) -> dict[str, Any]:
+    """Fetch a group's current members from WhatsApp through the bridge."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.get(
+            f"{WHATSAPP_API_BASE_URL}/group-info",
+            params={"jid": group_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def get_group_invite_link(group_jid: str) -> dict[str, Any]:
+    """Fetch a group's current invite link through the bridge (admins only; never resets it)."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.get(
+            f"{WHATSAPP_API_BASE_URL}/group-invite-link",
+            params={"jid": group_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
 def download_media(message_id: str, chat_jid: str) -> str | None:
     """Download media from a message and return the local file path.
 

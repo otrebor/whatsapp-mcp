@@ -219,6 +219,34 @@ automatically.
 - "Mark those messages as read"
 - "Mark the last three messages from Alice in the team group as read"
 
+#### `get_group_participants`
+
+Get the current member list of a group, straight from WhatsApp (requires the
+bridge). Includes members who have never posted, with phone number, name and
+admin flags.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID (e.g. `120363414691944010@g.us`); a bare ID is accepted
+
+**Natural Language Examples:**
+
+- "Who is in the Book Club group?"
+- "Export the members of the birthday group to a CSV"
+
+#### `get_group_invite_link`
+
+Get the invite link of a group you are an admin of. Returns the existing link
+and never resets it; anyone with the link can join.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+
+**Natural Language Examples:**
+
+- "Get me the invite link for the Gift for Anna group"
+
 #### `send_reaction`
 
 Send (or remove) an emoji reaction to a message.
@@ -895,10 +923,11 @@ flowchart LR
         REACT["/api/react"]
         TYPE["/api/typing"]
         HIST["/api/history"]
+        GROUP["/api/group-info,<br/>/api/group-invite-link"]
         HEALTH["/api/health"]
     end
 
-    subgraph MCPTools["MCP Tools (15 total)"]
+    subgraph MCPTools["MCP Tools (19 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
