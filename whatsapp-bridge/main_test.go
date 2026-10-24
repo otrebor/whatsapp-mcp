@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2916,20 +2917,29 @@ func assertPermissionBits(t *testing.T, path string, want os.FileMode) {
 
 func TestResolveDeviceName(t *testing.T) {
 	cases := []struct {
-		name string
-		set  bool
-		env  string
-		want string
+		name    string
+		set     bool
+		env     string
+		host    string
+		hostErr error
+		want    string
 	}{
-		{name: "unset keeps default", set: false, want: ""},
-		{name: "empty keeps default", set: true, env: "", want: ""},
-		{name: "whitespace only keeps default", set: true, env: "   ", want: ""},
-		{name: "plain value", set: true, env: "Agent Works", want: "Agent Works"},
-		{name: "surrounding whitespace trimmed", set: true, env: "  My Assistant  ", want: "My Assistant"},
+		{name: "unset uses host and default", set: false, host: "DESKTOP-4F2K", want: "DESKTOP-4F2K · WhatsApp MCP"},
+		{name: "empty uses host and default", set: true, env: "", host: "laptop", want: "laptop · WhatsApp MCP"},
+		{name: "whitespace only uses host and default", set: true, env: "   ", host: "laptop", want: "laptop · WhatsApp MCP"},
+		{name: "domain stripped from host", set: false, host: "build1.corp.example.com", want: "build1 · WhatsApp MCP"},
+		{name: "long host truncated", set: false, host: strings.Repeat("h", 40), want: strings.Repeat("h", maxHostnameInLabel) + " · WhatsApp MCP"},
+		{name: "unknown host uses plain default", set: false, hostErr: errors.New("no hostname"), want: defaultDeviceName},
+		{name: "blank host uses plain default", set: false, host: "  ", want: defaultDeviceName},
+		{name: "plain value", set: true, env: "Agent Works", host: "laptop", want: "Agent Works"},
+		{name: "surrounding whitespace trimmed", set: true, env: "  My Assistant  ", host: "laptop", want: "My Assistant"},
 	}
 
+	oldHostname := hostname
+	t.Cleanup(func() { hostname = oldHostname })
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			hostname = func() (string, error) { return tc.host, tc.hostErr }
 			if tc.set {
 				t.Setenv("WHATSAPP_DEVICE_NAME", tc.env)
 			} else {
