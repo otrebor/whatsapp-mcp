@@ -53,30 +53,36 @@ func registerChatDeleteEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) 
 			return
 		}
 
-		// The patch must name the chat's latest message so WhatsApp knows
-		// which range to delete.
+		// The patch names the chat's latest message so WhatsApp knows which
+		// range to delete. Chats whose history never synced have no stored
+		// messages; fall back to the chat's last_message_time with no key.
 		var (
 			msgID  string
 			fromMe bool
 			rawTS  any
 			sender string
+			key    *waCommon.MessageKey
 		)
 		err = messageStore.db.QueryRow(
 			`SELECT id, is_from_me, timestamp, sender FROM messages
 			  WHERE chat_jid = ? ORDER BY timestamp DESC LIMIT 1`,
 			chatJID.String(),
 		).Scan(&msgID, &fromMe, &rawTS, &sender)
-		if err != nil {
-			writeResp(http.StatusNotFound, false, fmt.Sprintf("No stored messages for %s; cannot build delete request", chatJID))
+		if err == nil {
+			key = &waCommon.MessageKey{
+				RemoteJID: proto.String(chatJID.String()),
+				FromMe:    proto.Bool(fromMe),
+				ID:        proto.String(msgID),
+			}
+			if chatJID.Server == types.GroupServer && !fromMe && sender != "" {
+				key.Participant = proto.String(sender + "@" + types.DefaultUserServer)
+			}
+		} else if err = messageStore.db.QueryRow(
+			`SELECT last_message_time FROM chats WHERE jid = ?`,
+			chatJID.String(),
+		).Scan(&rawTS); err != nil || rawTS == nil {
+			writeResp(http.StatusNotFound, false, fmt.Sprintf("No stored messages or chat for %s; cannot build delete request", chatJID))
 			return
-		}
-		key := &waCommon.MessageKey{
-			RemoteJID: proto.String(chatJID.String()),
-			FromMe:    proto.Bool(fromMe),
-			ID:        proto.String(msgID),
-		}
-		if chatJID.Server == types.GroupServer && !fromMe && sender != "" {
-			key.Participant = proto.String(sender + "@" + types.DefaultUserServer)
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)

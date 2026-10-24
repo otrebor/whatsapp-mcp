@@ -57,3 +57,4 @@ htmlcov/
 # Personal notes
 /birthdays/*
 !/birthdays/templates/
+/cleanup/
