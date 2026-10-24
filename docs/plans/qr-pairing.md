@@ -1,7 +1,8 @@
 # Plan: link WhatsApp via QR code from the MCP client
 
 Status: implemented on `feat/qr-pairing`. Phase 3 took the fallback (see
-below): there is no `POST /api/pairing/start`.
+below). [`in-process-relink.md`](./in-process-relink.md) later replaced it:
+the bridge now re-links without exiting and serves `POST /api/pairing/start`.
 
 ## Problem
 

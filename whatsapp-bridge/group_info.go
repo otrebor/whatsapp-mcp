@@ -130,9 +130,10 @@ func groupInfoResponse(ctx context.Context, client *whatsmeow.Client, info *type
 // registerGroupInfoEndpoint wires the /api/group-* endpoints onto an existing
 // mux. group-info asks WhatsApp for the current member list, which is the only
 // reliable source (messages.db only knows members who posted).
-func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, client *whatsmeow.Client) {
+func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, sessions *sessionHolder) {
 	// Returns the existing invite link; never resets it. Only admins can fetch it.
 	mux.HandleFunc("/api/group-invite-link", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -170,6 +171,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 
 	// Adds members to an existing group (caller must be admin).
 	mux.HandleFunc("/api/group-participants-add", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -235,6 +237,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 
 	// Sets (or clears, with an empty topic) the group description.
 	mux.HandleFunc("/api/group-topic", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -283,6 +286,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 	}))
 
 	mux.HandleFunc("/api/group-create", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -344,6 +348,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 	}))
 
 	mux.HandleFunc("/api/group-info", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

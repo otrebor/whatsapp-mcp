@@ -245,6 +245,12 @@ Settings > Linked Devices > Link a device, then poll `bridge_status` until
 `connected` is true. Codes rotate about every 20 seconds; call again for the
 current one. Returns "already linked" when there is nothing to scan.
 
+It also works after a logout (`logged_out`: the bridge prepares a new code
+without restarting) and after the bridge gave up waiting for a scan
+(`timed_out`: the tool asks the bridge to start pairing again via
+`POST /api/pairing/start`). In both cases it waits up to ~10 seconds for the
+new code.
+
 The image is a live login code and passes through your MCP client (and possibly
 the model transcript). It expires within about a minute, but anyone who scans
 it first can link their own account to your bridge, so don't share it.
@@ -258,6 +264,24 @@ it first can link their own account to your bridge, so don't share it.
 **Natural Language Examples:**
 
 - "Link WhatsApp" / "Show me the WhatsApp QR code"
+
+#### `logout`
+
+Unlink the bridge from your WhatsApp account (`POST /api/logout`). The device
+disappears from WhatsApp > Linked Devices and the local session is deleted, but
+the bridge keeps running and offers a new QR code within a few seconds, so you
+can link the same or another account with `get_pairing_qr`. Local message
+history in `messages.db` is kept; if you link a different number, its chats are
+listed alongside the old ones.
+
+The bridge must be connected to send the unlink request; offline it returns an
+error and changes nothing.
+
+**Parameters:** none
+
+**Natural Language Examples:**
+
+- "Log out of WhatsApp" / "Unlink the bridge so I can link another account"
 
 #### `get_group_participants`
 
@@ -1023,10 +1047,10 @@ flowchart LR
         GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
         CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
-        PAIR["/api/pairing/qr.png"]
+        PAIR["/api/pairing/qr.png, /api/pairing/start,<br/>/api/logout"]
     end
 
-    subgraph MCPTools["MCP Tools (25 total)"]
+    subgraph MCPTools["MCP Tools (26 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
@@ -1128,10 +1152,13 @@ are documented in [docs/RELEASING.md](docs/RELEASING.md).
 - **QR Code Not Displaying**: Call `get_pairing_qr` from your MCP client, or
   fetch `GET /api/pairing/qr.png` with the bridge token. Otherwise restart the
   bridge and check terminal QR code support.
-- **Bridge exits with code 3**: the phone unlinked it (logged out). whatsmeow
-  deletes the session and can't re-pair in the same process, so the bridge
-  exits. Start it again (launchd `KeepAlive` and systemd `Restart=on-failure`
-  do this for you) and scan the new code.
+- **Logged out ("401: logged out from another device")**: the phone unlinked
+  the bridge. It keeps running, creates a new device and shows a new QR code in
+  the terminal and through `get_pairing_qr`; scan it to link again. (Older
+  bridges exited with code 3 instead and needed a restart.)
+- **QR code timed out**: after 3 unscanned attempts the bridge stops offering
+  codes but keeps running (`pairing_state: timed_out`). Call `get_pairing_qr`,
+  or `POST /api/pairing/start` with the bridge token, to start again.
 - **Port open but sends fail with 503 `not connected to WhatsApp`**: the REST
   API starts before pairing, so an open port doesn't mean the bridge is ready.
   Use `/api/health` (or `bridge_status`), which returns 503 until connected.

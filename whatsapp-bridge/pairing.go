@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -19,17 +22,6 @@ const (
 	pairingLoggedOut    = "logged_out"    // the phone unlinked this device
 	pairingPaired       = "paired"        // a session is stored
 )
-
-// exitCodeLoggedOut is the process exit code after a runtime logout.
-//
-// whatsmeow deletes the device on events.LoggedOut and marks the store
-// Deleted, so the same *whatsmeow.Client refuses to Connect again
-// (store.ErrDeviceDeleted), and its app-state processor keeps a reference to
-// the old store, so swapping in a fresh device is not safe either. Exiting
-// with a distinct code lets a supervisor (launchd KeepAlive, systemd
-// Restart=on-failure) or the user start a clean process that shows a new QR
-// code.
-const exitCodeLoggedOut = 3
 
 // pairingState tracks the QR pairing flow so REST callers can show the code
 // instead of relying on the terminal. The code itself is never logged or
@@ -102,8 +94,16 @@ func (p *pairingState) snapshot() pairingSnapshot {
 // logged in. IsConnected alone is not enough: while a QR code is waiting to be
 // scanned the websocket is already open, but Store.ID is nil and any send
 // dereferences it.
-func whatsappReady(client *whatsmeow.Client) bool {
+//
+// A var so tests can stand in for a live connection.
+var whatsappReady = func(client *whatsmeow.Client) bool {
 	return client.IsConnected() && client.IsLoggedIn()
+}
+
+// logoutClient unlinks this device from the phone and deletes it locally. A
+// var so tests can fake it.
+var logoutClient = func(ctx context.Context, client *whatsmeow.Client) error {
+	return client.Logout(ctx)
 }
 
 // requireConnected writes a 503 and returns false unless whatsappReady. Since
@@ -122,8 +122,79 @@ func requireConnected(w http.ResponseWriter, client *whatsmeow.Client) bool {
 	return false
 }
 
-// registerPairingEndpoints serves the live pairing QR code as a PNG.
-func registerPairingEndpoints(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc) {
+func writePairingJSON(w http.ResponseWriter, status int, body map[string]interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// registerPairingEndpoints serves the live pairing QR code as a PNG and lets
+// callers log out or restart pairing without restarting the bridge.
+func registerPairingEndpoints(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, sessions *sessionHolder) {
+	mux.HandleFunc("/api/logout", auth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		client := sessions.current()
+		if client == nil || client.Store == nil || client.Store.ID == nil {
+			writePairingJSON(w, http.StatusConflict, map[string]interface{}{
+				"success": false,
+				"message": "not logged in",
+			})
+			return
+		}
+		// Logout sends the unlink request over the live connection; offline,
+		// it would fail after the local session is already doubtful.
+		if !requireConnected(w, client) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		if err := logoutClient(ctx, client); err != nil {
+			if errors.Is(err, whatsmeow.ErrNotLoggedIn) {
+				writePairingJSON(w, http.StatusConflict, map[string]interface{}{
+					"success": false,
+					"message": "not logged in",
+				})
+				return
+			}
+			writePairingJSON(w, http.StatusBadGateway, map[string]interface{}{
+				"success": false,
+				"message": fmt.Sprintf("logout failed: %v", err),
+			})
+			return
+		}
+		bridgePairing.setState(pairingLoggedOut, "logged out via /api/logout")
+		notify(sessions.logoutRequested)
+		writePairingJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "logged out; a new QR code will be available shortly",
+		})
+	}))
+
+	mux.HandleFunc("/api/pairing/start", auth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		state := bridgePairing.snapshot().State
+		if state != pairingTimedOut {
+			writePairingJSON(w, http.StatusConflict, map[string]interface{}{
+				"success":       false,
+				"message":       "pairing can only be restarted after it timed out",
+				"pairing_state": state,
+			})
+			return
+		}
+		notify(sessions.pairingStart)
+		writePairingJSON(w, http.StatusAccepted, map[string]interface{}{
+			"success":       true,
+			"message":       "pairing restarted; a QR code will be available shortly",
+			"pairing_state": state,
+		})
+	}))
+
 	mux.HandleFunc("/api/pairing/qr.png", auth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

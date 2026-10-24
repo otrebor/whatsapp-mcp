@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -26,7 +27,7 @@ func withPairingState(t *testing.T, state string) *pairingState {
 
 func doPairingRequest(t *testing.T, client *whatsmeow.Client, method, path, body, token string) *httptest.ResponseRecorder {
 	t.Helper()
-	handler := newRESTMux(client, newTestMessageStore(t), 8080, pairingTestToken, nil)
+	handler := newRESTMux(newSessionHolder(client), newTestMessageStore(t), 8080, pairingTestToken, nil)
 	req := httptest.NewRequest(method, "http://127.0.0.1:8080"+path, strings.NewReader(body))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -172,5 +173,189 @@ func TestRequireConnected_DisconnectedReturns503(t *testing.T) {
 		if !strings.Contains(resp.Body.String(), "not connected to WhatsApp") {
 			t.Errorf("%s: body = %s", c.path, resp.Body.String())
 		}
+	}
+}
+
+func doSessionRequest(t *testing.T, sessions *sessionHolder, method, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	handler := newRESTMux(sessions, newTestMessageStore(t), 8080, pairingTestToken, nil)
+	req := httptest.NewRequest(method, "http://127.0.0.1:8080"+path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	return resp
+}
+
+// fakeLogout makes whatsappReady report a live connection and replaces
+// client.Logout, restoring both after the test.
+func fakeLogout(t *testing.T, err error) *int {
+	t.Helper()
+	oldReady, oldLogout := whatsappReady, logoutClient
+	t.Cleanup(func() { whatsappReady, logoutClient = oldReady, oldLogout })
+	calls := 0
+	whatsappReady = func(*whatsmeow.Client) bool { return true }
+	logoutClient = func(context.Context, *whatsmeow.Client) error {
+		calls++
+		return err
+	}
+	return &calls
+}
+
+func selfClient() *whatsmeow.Client {
+	return newTestClientWithSelf(&mockLIDStore{}, types.NewJID("15551234567", types.DefaultUserServer))
+}
+
+func signalled(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
+func TestLogout_RequiresAuthAndPost(t *testing.T) {
+	withPairingState(t, pairingPaired)
+	calls := fakeLogout(t, nil)
+	sessions := newSessionHolder(selfClient())
+
+	if resp := doSessionRequest(t, sessions, http.MethodPost, "/api/logout", ""); resp.Code != http.StatusUnauthorized {
+		t.Errorf("no token: status = %d, want 401", resp.Code)
+	}
+	if resp := doSessionRequest(t, sessions, http.MethodGet, "/api/logout", pairingTestToken); resp.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET: status = %d, want 405", resp.Code)
+	}
+	if *calls != 0 {
+		t.Errorf("Logout called %d times on rejected requests", *calls)
+	}
+}
+
+func TestLogout_NotLoggedInReturns409(t *testing.T) {
+	withPairingState(t, pairingAwaitingScan)
+	calls := fakeLogout(t, nil)
+	sessions := newSessionHolder(newTestClient(&mockLIDStore{}))
+
+	resp := doSessionRequest(t, sessions, http.MethodPost, "/api/logout", pairingTestToken)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.Code)
+	}
+	if *calls != 0 || signalled(sessions.logoutRequested) {
+		t.Error("logout ran without a session")
+	}
+}
+
+func TestLogout_OfflineReturns503(t *testing.T) {
+	withPairingState(t, pairingPaired)
+	calls := fakeLogout(t, nil)
+	whatsappReady = func(*whatsmeow.Client) bool { return false }
+	sessions := newSessionHolder(selfClient())
+
+	resp := doSessionRequest(t, sessions, http.MethodPost, "/api/logout", pairingTestToken)
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.Code)
+	}
+	if *calls != 0 || signalled(sessions.logoutRequested) {
+		t.Error("logout ran while offline")
+	}
+}
+
+func TestLogout_SuccessSignalsManager(t *testing.T) {
+	p := withPairingState(t, pairingPaired)
+	calls := fakeLogout(t, nil)
+	sessions := newSessionHolder(selfClient())
+
+	resp := doSessionRequest(t, sessions, http.MethodPost, "/api/logout", pairingTestToken)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body %s", resp.Code, resp.Body.String())
+	}
+	if *calls != 1 {
+		t.Errorf("Logout calls = %d, want 1", *calls)
+	}
+	if !signalled(sessions.logoutRequested) {
+		t.Error("manager was not told about the logout")
+	}
+	if got := p.snapshot().State; got != pairingLoggedOut {
+		t.Errorf("pairing_state = %q, want logged_out", got)
+	}
+}
+
+func TestLogout_FailureKeepsSession(t *testing.T) {
+	cases := []struct {
+		err  error
+		want int
+	}{
+		{whatsmeow.ErrNotLoggedIn, http.StatusConflict},
+		{io.ErrUnexpectedEOF, http.StatusBadGateway},
+	}
+	for _, c := range cases {
+		p := withPairingState(t, pairingPaired)
+		fakeLogout(t, c.err)
+		sessions := newSessionHolder(selfClient())
+
+		resp := doSessionRequest(t, sessions, http.MethodPost, "/api/logout", pairingTestToken)
+		if resp.Code != c.want {
+			t.Errorf("%v: status = %d, want %d", c.err, resp.Code, c.want)
+		}
+		if signalled(sessions.logoutRequested) {
+			t.Errorf("%v: manager signalled after a failed logout", c.err)
+		}
+		if got := p.snapshot().State; got != pairingPaired {
+			t.Errorf("%v: pairing_state = %q, want paired", c.err, got)
+		}
+	}
+}
+
+func TestPairingStart_OnlyAfterTimeout(t *testing.T) {
+	for _, state := range []string{pairingStarting, pairingAwaitingScan, pairingLoggedOut, pairingPaired} {
+		withPairingState(t, state)
+		sessions := newSessionHolder(newTestClient(&mockLIDStore{}))
+		resp := doSessionRequest(t, sessions, http.MethodPost, "/api/pairing/start", pairingTestToken)
+		if resp.Code != http.StatusConflict {
+			t.Errorf("%s: status = %d, want 409", state, resp.Code)
+		}
+		if signalled(sessions.pairingStart) {
+			t.Errorf("%s: pairing restarted", state)
+		}
+	}
+
+	withPairingState(t, pairingTimedOut)
+	sessions := newSessionHolder(newTestClient(&mockLIDStore{}))
+	if resp := doSessionRequest(t, sessions, http.MethodPost, "/api/pairing/start", ""); resp.Code != http.StatusUnauthorized {
+		t.Errorf("no token: status = %d, want 401", resp.Code)
+	}
+	resp := doSessionRequest(t, sessions, http.MethodPost, "/api/pairing/start", pairingTestToken)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("timed_out: status = %d, want 202", resp.Code)
+	}
+	if !signalled(sessions.pairingStart) {
+		t.Error("timed_out: manager was not told to restart pairing")
+	}
+}
+
+func TestHandlers_UseCurrentClientPerRequest(t *testing.T) {
+	withPairingState(t, pairingPaired)
+	sessions := newSessionHolder(newTestClient(&mockLIDStore{}))
+	handler := newRESTMux(sessions, newTestMessageStore(t), 8080, pairingTestToken, nil)
+
+	loggedIn := func() interface{} {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/health", nil)
+		req.Header.Set("Authorization", "Bearer "+pairingTestToken)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		var body map[string]interface{}
+		if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+			t.Fatalf("bad JSON: %v", err)
+		}
+		return body["logged_in"]
+	}
+
+	if got := loggedIn(); got != false {
+		t.Fatalf("logged_in = %v before swap, want false", got)
+	}
+	sessions.set(selfClient())
+	if got := loggedIn(); got != true {
+		t.Errorf("logged_in = %v after swap, want true (handler cached the old client)", got)
 	}
 }

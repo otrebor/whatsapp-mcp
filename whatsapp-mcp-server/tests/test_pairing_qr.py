@@ -84,6 +84,7 @@ def test_get_pairing_qr_logged_out(monkeypatch):
         },
         [],
     )
+    monkeypatch.setattr(whatsapp, "PAIRING_QR_WAIT_S", 0)
 
     result = whatsapp.get_pairing_qr()
 

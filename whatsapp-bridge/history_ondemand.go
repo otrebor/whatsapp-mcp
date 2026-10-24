@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -128,8 +127,9 @@ func oldestStoredMessage(store *MessageStore, chatJID string) (id string, fromMe
 }
 
 // registerHistoryEndpoint wires POST /api/history onto an existing mux.
-func registerHistoryEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, client *whatsmeow.Client, messageStore *MessageStore) {
+func registerHistoryEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, sessions *sessionHolder, messageStore *MessageStore) {
 	mux.HandleFunc("/api/history", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

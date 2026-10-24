@@ -31,7 +31,9 @@ bridge calls prove it's up. Stop on any failure below, before asking for inputs.
     and poll `bridge_status` every ~10s until `connected: true`. Call
     `get_pairing_qr` again when a code expires. Stop after 5 minutes (the
     bridge's QR timeout).
-  - `logged_out` → the bridge exits; start it again, then pair as above.
+  - `logged_out` or `timed_out` → call `get_pairing_qr`; the bridge offers
+    a new code without a restart. Pair as above. If the bridge stopped
+    (`reachable: false`, an older bridge), start it again first.
   - `logged_in: true` but not connected → wait ~30s for the reconnect and
     check again once; still down → stop and say so.
   - Anything else → stop and say the bridge isn't connected.

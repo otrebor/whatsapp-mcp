@@ -65,6 +65,9 @@ from whatsapp import (
     list_messages as whatsapp_list_messages,
 )
 from whatsapp import (
+    logout as whatsapp_logout,
+)
+from whatsapp import (
     mark_messages_read as whatsapp_mark_messages_read,
 )
 from whatsapp import (
@@ -466,10 +469,12 @@ def bridge_status() -> dict[str, Any]:
 def get_pairing_qr(open_viewer: bool = False) -> Any:
     """Show the QR code that links the bridge to WhatsApp.
 
-    Use when bridge_status reports pairing_state "awaiting_scan". Show the image
-    to the user, who scans it in WhatsApp > Settings > Linked Devices > Link a
-    device. Codes rotate about every 20s; call again if it expired. Then poll
-    bridge_status until connected is true.
+    Use when bridge_status reports pairing_state "awaiting_scan", "logged_out"
+    or "timed_out": after a logout or an expired code it waits a few seconds for
+    the bridge to offer a new one. Show the image to the user, who scans it in
+    WhatsApp > Settings > Linked Devices > Link a device. Codes rotate about
+    every 20s; call again if it expired. Then poll bridge_status until
+    connected is true.
 
     The image is a live login code: anyone who scans it before it expires can
     link their own WhatsApp account to this bridge. It expires within about a
@@ -501,6 +506,24 @@ def get_pairing_qr(open_viewer: bool = False) -> Any:
         except OSError as exc:
             instructions += f" Could not open an image viewer: {exc}"
     return [Image(data=result["png"], format="png"), instructions]
+
+
+@mcp.tool()
+def logout() -> dict[str, Any]:
+    """Unlink the bridge from the user's WhatsApp account.
+
+    Removes this linked device from the phone (it disappears from WhatsApp >
+    Linked Devices) and deletes the local session. Sending stops until someone
+    scans a new QR code with get_pairing_qr; the bridge keeps running and
+    offers one within a few seconds. Local message history is kept. Only call
+    this when the user explicitly asks to log out or switch accounts.
+
+    Returns:
+        A dictionary with success and message. Fails with "not logged in" when
+        there is no session, or when the bridge is offline (it must be
+        connected to unlink)
+    """
+    return whatsapp_logout()
 
 
 @mcp.tool()

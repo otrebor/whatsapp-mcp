@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/types"
@@ -19,8 +18,9 @@ import (
 // It deletes a chat "for me": an app-state patch removes it from all of the
 // user's own devices (phone included); the other party keeps their copy. The
 // chat and its messages are then removed from messages.db as well.
-func registerChatDeleteEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, client *whatsmeow.Client, messageStore *MessageStore) {
+func registerChatDeleteEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, sessions *sessionHolder, messageStore *MessageStore) {
 	mux.HandleFunc("/api/chat-delete", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
