@@ -1,5 +1,5 @@
 ---
-name: bday-present
+name: bday-gift-group-setup
 description: Organize a group birthday present from a WhatsApp birthday-invite group. Creates a "present" group with everyone except the birthday person, records who couldn't be added (privacy settings), DMs them the invite link, and posts the welcome message. Use when asked to set up / organize a birthday present or gift collection for someone.
 ---
 
