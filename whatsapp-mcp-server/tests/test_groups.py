@@ -88,6 +88,48 @@ def test_add_group_participants_validates_before_calling_bridge(monkeypatch):
     assert calls == []
 
 
+def test_remove_group_participants_calls_bridge(monkeypatch):
+    calls = []
+    payload = {"success": True, "message": "Removed 2 of 2 participants", "removed": 2, "failed": []}
+    _capture(monkeypatch, "post", calls, DummyResponse(payload=payload))
+
+    result = whatsapp.remove_group_participants("123", ["+41791234567", "900@lid"])
+
+    assert result == payload
+    assert calls[0]["url"].endswith("/group-participants-remove")
+    assert calls[0]["json"] == {"jid": "123@g.us", "participants": ["41791234567", "900@lid"]}
+
+
+def test_remove_group_participants_validates_before_calling_bridge(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={}))
+
+    assert whatsapp.remove_group_participants("123", [])["success"] is False
+    assert whatsapp.remove_group_participants("123", [" "])["success"] is False
+    assert whatsapp.remove_group_participants("1@s.whatsapp.net", ["41791234567"])["success"] is False
+    assert calls == []
+
+
+def test_leave_group_calls_bridge(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={"success": True, "message": "Left group"}))
+
+    result = whatsapp.leave_group(" 123 ")
+
+    assert result["success"] is True
+    assert calls[0]["url"].endswith("/group-leave")
+    assert calls[0]["json"] == {"jid": "123@g.us"}
+
+
+def test_leave_group_rejects_non_group_jid(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={}))
+
+    assert whatsapp.leave_group("")["success"] is False
+    assert whatsapp.leave_group("41791234567@s.whatsapp.net")["success"] is False
+    assert calls == []
+
+
 def test_delete_chat_calls_bridge(monkeypatch):
     calls = []
     _capture(monkeypatch, "post", calls, DummyResponse(payload={"success": True, "message": "deleted"}))

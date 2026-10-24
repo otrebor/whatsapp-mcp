@@ -1541,6 +1541,49 @@ def add_group_participants(group_jid: str, participants: list[str]) -> dict[str,
         return {"success": False, "message": f"Request error: {str(e)}"}
 
 
+def remove_group_participants(group_jid: str, participants: list[str]) -> dict[str, Any]:
+    """Remove members from a group through the bridge (caller must be admin; not yourself)."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    members = [p.strip().lstrip("+") for p in participants]
+    if not members or any(not p for p in members):
+        return {"success": False, "message": "At least one non-empty participant must be provided"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-participants-remove",
+            json={"jid": group_jid, "participants": members},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
+def leave_group(group_jid: str) -> dict[str, Any]:
+    """Leave a group through the bridge. The chat itself is kept until deleted."""
+    group_jid = group_jid.strip()
+    if not group_jid:
+        return {"success": False, "message": "Group JID must be provided"}
+    if "@" not in group_jid:
+        group_jid += "@g.us"
+    if not group_jid.endswith("@g.us"):
+        return {"success": False, "message": "Group JID must end with @g.us"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-leave",
+            json={"jid": group_jid},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
 def set_group_description(group_jid: str, description: str) -> dict[str, Any]:
     """Set (or clear, with an empty string) a group's description through the bridge."""
     group_jid = group_jid.strip()
