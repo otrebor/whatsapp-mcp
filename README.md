@@ -1121,7 +1121,7 @@ flowchart LR
         REACT["/api/react"]
         TYPE["/api/typing"]
         HIST["/api/history"]
-        GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
+        GROUP["/api/group-info, /api/groups-joined,<br/>/api/group-create, /api/group-invite-link,<br/>/api/group-topic, /api/group-participants-add"]
         CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
         PAIR["/api/pairing/qr.png, /api/pairing/start,<br/>/api/logout"]

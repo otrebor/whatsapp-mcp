@@ -479,4 +479,55 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 		fmt.Printf("← /api/group-info jid=%s participants=%d\n", jid, len(resp.Participants))
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
+
+	// Lists every joined group with its community role: a community parent
+	// (is_parent), a group linked to one (linked_parent_jid), or the
+	// community's announcement group (is_default_sub_group).
+	mux.HandleFunc("/api/groups-joined", auth(func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if !whatsappReady(client) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "message": "Not connected to WhatsApp"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		groups, err := client.GetJoinedGroups(ctx)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "message": fmt.Sprintf("Failed to list groups: %v", err)})
+			return
+		}
+
+		type joinedGroup struct {
+			JID               string `json:"jid"`
+			Name              string `json:"name"`
+			IsParent          bool   `json:"is_parent"`
+			LinkedParentJID   string `json:"linked_parent_jid,omitempty"`
+			IsDefaultSubGroup bool   `json:"is_default_sub_group"`
+			Participants      int    `json:"participants"`
+		}
+		out := make([]joinedGroup, 0, len(groups))
+		for _, g := range groups {
+			jg := joinedGroup{
+				JID:               g.JID.String(),
+				Name:              g.Name,
+				IsParent:          g.IsParent,
+				IsDefaultSubGroup: g.IsDefaultSubGroup,
+				Participants:      len(g.Participants),
+			}
+			if !g.LinkedParentJID.IsEmpty() {
+				jg.LinkedParentJID = g.LinkedParentJID.String()
+			}
+			out = append(out, jg)
+		}
+		fmt.Printf("← /api/groups-joined count=%d\n", len(out))
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "groups": out})
+	}))
 }
