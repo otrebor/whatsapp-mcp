@@ -1,0 +1,108 @@
+:root {
+  --bg: #f6f7f8;
+  --fg: #1b1f23;
+  --muted: #5f6b76;
+  --card: #ffffff;
+  --border: #d8dde2;
+  --accent: #128c4a;
+  --warn: #a15c00;
+  --error: #b42318;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111416;
+    --fg: #e8ecef;
+    --muted: #9aa5af;
+    --card: #1b1f23;
+    --border: #30363c;
+    --accent: #3ccf7d;
+    --warn: #f0b04a;
+    --error: #ff7a6e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+main {
+  width: 100%;
+  max-width: 420px;
+  margin: 48px 16px;
+  padding: 28px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+h1 { margin: 0 0 8px; font-size: 1.4rem; }
+
+.status { margin: 0 0 16px; font-weight: 600; }
+.status[data-tone="ok"] { color: var(--accent); }
+.status[data-tone="warn"] { color: var(--warn); }
+.status[data-tone="error"] { color: var(--error); }
+
+/* QR codes need dark-on-light with a quiet zone in either theme. */
+.qr {
+  display: inline-block;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+}
+.qr img {
+  display: block;
+  width: 264px;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.detail { color: var(--muted); margin: 12px 0; min-height: 1.5em; }
+.note { color: var(--muted); font-size: 0.85rem; margin: 20px 0 0; }
+.hint { color: var(--muted); font-size: 0.9rem; margin: 4px 0 12px; }
+
+form { text-align: left; }
+label { font-weight: 600; }
+input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+button {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: default; }
+button.danger {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+code { font-size: 0.85em; word-break: break-all; }
+
+[hidden] { display: none !important; }

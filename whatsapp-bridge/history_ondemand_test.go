@@ -122,7 +122,7 @@ func TestHistoryAnchorInfo(t *testing.T) {
 func TestHistoryEndpointValidation(t *testing.T) {
 	identity := func(h http.HandlerFunc) http.HandlerFunc { return h }
 	mux := http.NewServeMux()
-	registerHistoryEndpoint(mux, identity, nil, nil)
+	registerHistoryEndpoint(mux, identity, newSessionHolder(nil), nil)
 
 	cases := []struct {
 		name       string

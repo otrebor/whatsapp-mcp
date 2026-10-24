@@ -56,7 +56,12 @@ A Model Context Protocol (MCP) server for WhatsApp, enabling Claude to read and 
 
    On first start, the bridge prints and stores a local REST API token at
    `whatsapp-bridge/store/.bridge-token`. Scan the QR code with WhatsApp on
-   your phone to authenticate.
+   your phone to authenticate. If you can't see the terminal (launchd,
+   systemd, a hidden window), ask your MCP client to call `get_pairing_qr`
+   with `open_viewer: true` instead: it opens a live pairing page in your
+   browser (`http://localhost:8080/pairing`) that always shows the current
+   code, says when the device is linked, and has an **Unlink this device**
+   button.
 
 3. **Configure Claude Desktop**
 
@@ -225,11 +230,89 @@ Check whether the bridge is reachable and logged in to WhatsApp. Read tools work
 from the local database even when the bridge is down, so call this before
 sending anything.
 
+Besides `reachable` and `connected`, it reports `logged_in` (a session is
+stored, even while offline) and `pairing_state`: `starting`, `awaiting_scan`,
+`timed_out`, `logged_out` or `paired` (`None` for older bridges).
+
 **Parameters:** none
 
 **Natural Language Examples:**
 
 - "Is the WhatsApp bridge running?"
+
+#### `get_pairing_qr`
+
+Show the QR code that links the bridge to WhatsApp, as an image, when
+`bridge_status` reports `pairing_state: awaiting_scan`. Scan it in WhatsApp >
+Settings > Linked Devices > Link a device, then poll `bridge_status` until
+`connected` is true. Codes rotate about every 20 seconds; call again for the
+current one. Returns "already linked" when there is nothing to scan.
+
+It also works after a logout (`logged_out`: the bridge prepares a new code
+without restarting) and after the bridge gave up waiting for a scan
+(`timed_out`: the tool asks the bridge to start pairing again via
+`POST /api/pairing/start`). In both cases it waits up to ~10 seconds for the
+new code.
+
+The image is a live login code and passes through your MCP client (and possibly
+the model transcript). It expires within about a minute, but anyone who scans
+it first can link their own account to your bridge, so don't share it.
+
+**Parameters:**
+
+- `open_viewer` (optional, default `false`): open the bridge's live pairing
+  page in the browser, for clients that can't show images to the user. The
+  page polls the bridge every 2 seconds, so it always shows the current code
+  (no race against the 20-second rotation). It confirms when the device is
+  linked, can restart a timed-out pairing, and can unlink the device. Bridges
+  without the page fall back to opening the PNG in the OS image viewer (a
+  temporary file, deleted on the next call).
+
+The page (`GET /pairing`, plus `/pairing/app.js` and `/pairing/app.css`)
+contains no secrets and is served without the token, behind the same
+loopback bind and Host allow-list as the API. Its script calls the API with
+the bearer token, which `get_pairing_qr` passes in the URL fragment
+(`#token=…`). Browsers never send fragments to the server; the page moves the
+token to `sessionStorage` (that tab only) and removes it from the address bar.
+The fragment can still end up in browser history. Opened without a token, the
+page asks for the one in `whatsapp-bridge/store/.bridge-token`.
+
+**Natural Language Examples:**
+
+- "Link WhatsApp" / "Show me the WhatsApp QR code"
+
+#### `logout`
+
+Unlink the bridge from your WhatsApp account (`POST /api/logout`). The device
+disappears from WhatsApp > Linked Devices and the local session is deleted, but
+the bridge keeps running and offers a new QR code within a few seconds, so you
+can link the same or another account with `get_pairing_qr`.
+
+Local message history in `messages.db` survives the logout. What happens on the
+next link depends on the account:
+
+- **Same account** (the usual case: re-linking after a logout or an expired
+  session): history is kept. WhatsApp's history sync only re-sends recent
+  months, so the local copy is the only full one.
+- **Different account**: the previous account's chats, messages, calls and
+  downloaded media are deleted before the new account's history arrives, so
+  the two don't mix. `bridge_status` / `/api/health` then report
+  `history_wiped_at`. Set `WHATSAPP_WIPE_ON_ACCOUNT_CHANGE=false` to keep
+  everything instead. Accounts are compared by LID (WhatsApp's per-account
+  link ID) when both are known, otherwise by phone number. WhatsApp's "Change
+  number" is expected to keep the LID and so not count as a different account,
+  but that hasn't been verified; set the variable to `false` before changing
+  numbers if you want to be sure. Installs from before this check record their
+  account on the next start and are never wiped on that first link.
+
+The bridge must be connected to send the unlink request; offline it returns an
+error and changes nothing.
+
+**Parameters:** none
+
+**Natural Language Examples:**
+
+- "Log out of WhatsApp" / "Unlink the bridge so I can link another account"
 
 #### `get_group_participants`
 
@@ -566,6 +649,7 @@ Copy `.env.example` to `.env` and configure as needed:
 | `WEBHOOK_ENABLED`      | `true`                                   | Set to `false` to disable outbound webhooks  |
 | `WHATSAPP_AUTO_DOWNLOAD_MEDIA` | `true` | Automatically download incoming media, including webhook image bytes. `false` keeps webhook metadata/text without `mediaBase64` and leaves downloads to `/api/download` (`download_media`); delayed downloads may fail after media expires. Status messages are stored but never auto-downloaded or forwarded |
 | `FORWARD_SELF`         | `true`                                   | Forward messages sent by self                |
+| `WHATSAPP_WIPE_ON_ACCOUNT_CHANGE` | `true` | When a different account links, delete the previous account's local history and media. Re-linking the same account keeps it. See [`logout`](#logout) |
 | `WHATSAPP_DB_PATH`     | `../whatsapp-bridge/store/messages.db`   | Path to SQLite database                      |
 | `WHATSMEOW_DB_PATH`    | `../whatsapp-bridge/store/whatsapp.db`   | whatsmeow DB used for LID ↔ phone resolution |
 | `WHATSAPP_API_URL`     | `http://localhost:8080/api`              | Go bridge REST API URL                       |
@@ -995,9 +1079,10 @@ flowchart LR
         GROUP["/api/group-info, /api/group-create,<br/>/api/group-invite-link, /api/group-topic,<br/>/api/group-participants-add"]
         CDEL["/api/chat-delete"]
         HEALTH["/api/health"]
+        PAIR["/api/pairing/qr.png, /api/pairing/start,<br/>/api/logout"]
     end
 
-    subgraph MCPTools["MCP Tools (23 total)"]
+    subgraph MCPTools["MCP Tools (26 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]
@@ -1096,7 +1181,19 @@ are documented in [docs/RELEASING.md](docs/RELEASING.md).
   release and rebuild the bridge. WhatsApp periodically raises the minimum
   supported linked-device client version, which can make older whatsmeow builds
   fail before pairing completes.
-- **QR Code Not Displaying**: Restart the bridge. Check terminal QR code support.
+- **QR Code Not Displaying**: Call `get_pairing_qr` from your MCP client, or
+  fetch `GET /api/pairing/qr.png` with the bridge token. Otherwise restart the
+  bridge and check terminal QR code support.
+- **Logged out ("401: logged out from another device")**: the phone unlinked
+  the bridge. It keeps running, creates a new device and shows a new QR code in
+  the terminal and through `get_pairing_qr`; scan it to link again. (Older
+  bridges exited with code 3 instead and needed a restart.)
+- **QR code timed out**: after 3 unscanned attempts the bridge stops offering
+  codes but keeps running (`pairing_state: timed_out`). Call `get_pairing_qr`,
+  or `POST /api/pairing/start` with the bridge token, to start again.
+- **Port open but sends fail with 503 `not connected to WhatsApp`**: the REST
+  API starts before pairing, so an open port doesn't mean the bridge is ready.
+  Use `/api/health` (or `bridge_status`), which returns 503 until connected.
 - **Phone says "check your connection" after scanning**: WhatsApp answers a scan
   with a `companion_reg_refresh` notification, whatsmeow rotates the pairing
   secret, and the bridge prints a **new** QR code marked `QR code refreshed`.

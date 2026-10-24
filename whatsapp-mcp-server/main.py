@@ -2,12 +2,14 @@ import os
 import signal
 import sys
 import tempfile
+import webbrowser
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP, Image
 from pydantic import Field
 
 import media_preview
+import pairing_viewer
 import transcription
 from mcp_config import resolve_host, resolve_port, resolve_transport
 from parent_watchdog import install_stdio_parent_watchdog
@@ -52,6 +54,9 @@ from whatsapp import (
     get_message_context as whatsapp_get_message_context,
 )
 from whatsapp import (
+    get_pairing_qr as whatsapp_get_pairing_qr,
+)
+from whatsapp import (
     get_sender_name as whatsapp_get_sender_name,
 )
 from whatsapp import (
@@ -61,7 +66,13 @@ from whatsapp import (
     list_messages as whatsapp_list_messages,
 )
 from whatsapp import (
+    logout as whatsapp_logout,
+)
+from whatsapp import (
     mark_messages_read as whatsapp_mark_messages_read,
+)
+from whatsapp import (
+    pairing_page_url as whatsapp_pairing_page_url,
 )
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
@@ -450,10 +461,103 @@ def bridge_status() -> dict[str, Any]:
     sends anything.
 
     Returns:
-        A dictionary with reachable (bridge answered), connected (logged in to
-        WhatsApp) and a human-readable message
+        A dictionary with reachable (bridge answered), connected (online and
+        logged in to WhatsApp), logged_in (a session is stored, even if offline),
+        pairing_state (starting, awaiting_scan, timed_out, logged_out or paired;
+        None for older bridges) and a human-readable message. history_wiped_at
+        (Unix time) appears once the previous account's local history was
+        deleted because a different account linked
     """
     return whatsapp_bridge_status()
+
+
+@mcp.tool()
+def get_pairing_qr(open_viewer: bool = False) -> Any:
+    """Show the QR code that links the bridge to WhatsApp.
+
+    Use when bridge_status reports pairing_state "awaiting_scan", "logged_out"
+    or "timed_out": after a logout or an expired code it waits a few seconds for
+    the bridge to offer a new one. Show the image to the user, who scans it in
+    WhatsApp > Settings > Linked Devices > Link a device. Codes rotate about
+    every 20s; call again if it expired. Then poll bridge_status until
+    connected is true.
+
+    If the client can't show images to the user (many can't), pass
+    open_viewer=True: it opens the bridge's live pairing page in the browser,
+    which always shows the current code and confirms when linked, so there is
+    no race against the 20s rotation.
+
+    The image is a live login code: anyone who scans it before it expires can
+    link their own WhatsApp account to this bridge. It expires within about a
+    minute, but treat it as sensitive and do not repeat it elsewhere.
+
+    Args:
+        open_viewer: Open the live pairing page in the browser. Bridges without
+            that page fall back to opening the image in the OS image viewer
+            (a temporary file, deleted on the next call)
+
+    Returns:
+        The QR image plus instructions, or a dictionary explaining why there is
+        no code (already linked, bridge not running, logged out, ...)
+    """
+    page = whatsapp_pairing_page_url() if open_viewer else None
+    page_note = ""
+    if page:
+        pairing_viewer.cleanup()
+        open_url, display_url = page
+        try:
+            pairing_viewer.open_page(open_url)
+            page_note = (
+                f"Opened the live pairing page in the browser ({display_url}). It always shows the current "
+                "code and says when the device is linked; no need to call get_pairing_qr again."
+            )
+        except (OSError, webbrowser.Error) as exc:
+            page = None
+            page_note = f"Could not open the browser: {exc}"
+
+    result = whatsapp_get_pairing_qr()
+    if "png" not in result:
+        if not page:
+            pairing_viewer.cleanup()
+            return result
+        return {**result, "message": " ".join(filter(None, [result.get("message"), page_note]))}
+
+    instructions = (
+        f"Pairing QR code #{result.get('seq') or '?'}. Scan in WhatsApp > Settings > Linked Devices > "
+        "Link a device. Codes rotate about every 20s; call get_pairing_qr again if it expired. "
+        "Poll bridge_status until connected is true."
+    )
+    if page:
+        instructions += " " + page_note
+    elif open_viewer:
+        if page_note:
+            instructions += " " + page_note
+        try:
+            path = pairing_viewer.show(result["png"])
+            instructions += f" Opened in the image viewer: {path}"
+        except OSError as exc:
+            instructions += f" Could not open an image viewer: {exc}"
+    return [Image(data=result["png"], format="png"), instructions]
+
+
+@mcp.tool()
+def logout() -> dict[str, Any]:
+    """Unlink the bridge from the user's WhatsApp account.
+
+    Removes this linked device from the phone (it disappears from WhatsApp >
+    Linked Devices) and deletes the local session. Sending stops until someone
+    scans a new QR code with get_pairing_qr; the bridge keeps running and
+    offers one within a few seconds. Local message history is kept, unless a
+    different account links next: then the previous account's history is
+    deleted (unless WHATSAPP_WIPE_ON_ACCOUNT_CHANGE=false). Only call this when
+    the user explicitly asks to log out or switch accounts.
+
+    Returns:
+        A dictionary with success and message. Fails with "not logged in" when
+        there is no session, or when the bridge is offline (it must be
+        connected to unlink)
+    """
+    return whatsapp_logout()
 
 
 @mcp.tool()
