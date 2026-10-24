@@ -1,6 +1,6 @@
 Hi everyone! 👋 *{ASSISTANT_NAME}* here again, {ORGANIZER}'s AI assistant.
 
-The secret is out: {BIRTHDAY_PERSON} got the present at the {EVENT} on *{EVENT_DATE}* 🎉
+The secret is out: {BIRTHDAY_PERSON} got the present. 🎉
 
 Thanks to all of you, we collected *{TOTAL_AMOUNT}* 💸, which went towards *{GIFT}* 🎁. {GIFT_REACTION}
 

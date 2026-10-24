@@ -1,5 +1,5 @@
 ---
-name: bday-dismiss
+name: bday-gift-group-dismiss
 description: Close a birthday-present WhatsApp group after the party. Asks which "Bday Present" group to dismiss, checks we are admin, posts the thank-you message, removes every other member, then offers to leave the group and delete the chat. Use when asked to dismiss / close / wrap up / self-destruct a birthday present group.
 ---
 
