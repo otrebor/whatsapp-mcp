@@ -60,6 +60,9 @@ from whatsapp import (
     get_sender_name as whatsapp_get_sender_name,
 )
 from whatsapp import (
+    leave_group as whatsapp_leave_group,
+)
+from whatsapp import (
     list_chats as whatsapp_list_chats,
 )
 from whatsapp import (
@@ -73,6 +76,9 @@ from whatsapp import (
 )
 from whatsapp import (
     pairing_page_url as whatsapp_pairing_page_url,
+)
+from whatsapp import (
+    remove_group_participants as whatsapp_remove_group_participants,
 )
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
@@ -572,8 +578,9 @@ def get_group_participants(group_jid: str) -> dict[str, Any]:
 
     Returns:
         A dictionary with success, jid, name, topic and participants. Each
-        participant has jid, phone_number, lid, name, is_admin and is_super_admin.
-        phone_number may be missing when WhatsApp hides it.
+        participant has jid, phone_number, lid, name, is_admin, is_super_admin
+        and is_me (true for your own account). phone_number may be missing when
+        WhatsApp hides it.
     """
     return whatsapp_get_group_participants(group_jid)
 
@@ -628,6 +635,43 @@ def add_group_participants(group_jid: str, participants: list[str]) -> dict[str,
         WhatsApp refused, e.g. because of their privacy settings, with error code)
     """
     return whatsapp_add_group_participants(group_jid, participants)
+
+
+@mcp.tool()
+def remove_group_participants(group_jid: str, participants: list[str]) -> dict[str, Any]:
+    """Remove members from a WhatsApp group you are an admin of.
+
+    Destructive external side effect: members are removed immediately and see
+    that you removed them. You cannot remove yourself; use leave_group.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+        participants: Members to remove, as phone numbers with country code but no +
+                      (e.g. ["41791234567"]) or JIDs (use the jid from
+                      get_group_participants when phone_number is missing)
+
+    Returns:
+        A dictionary with success, message, removed (count) and failed (members
+        WhatsApp refused to remove, with error code)
+    """
+    return whatsapp_remove_group_participants(group_jid, participants)
+
+
+@mcp.tool()
+def leave_group(group_jid: str) -> dict[str, Any]:
+    """Leave a WhatsApp group.
+
+    External side effect: members see that you left, and you can only rejoin
+    if someone adds you or shares an invite link. The chat stays on your
+    devices; remove it afterwards with delete_chat if wanted.
+
+    Args:
+        group_jid: The group JID (e.g. "120363414691944010@g.us"); a bare ID is accepted
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    return whatsapp_leave_group(group_jid)
 
 
 @mcp.tool()

@@ -137,3 +137,5 @@ blindly). Record each result.
 Write `summary.md` (date, group name + JID, invite link, added count,
 not-added list with DM status, any errors) and give the user a short recap
 in chat.
+
+After the party, close the group with the `bday-gift-group-dismiss` skill.

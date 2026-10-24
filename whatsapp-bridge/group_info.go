@@ -20,6 +20,7 @@ type GroupParticipantInfo struct {
 	Name         string `json:"name,omitempty"`
 	IsAdmin      bool   `json:"is_admin"`
 	IsSuperAdmin bool   `json:"is_super_admin"`
+	IsMe         bool   `json:"is_me"` // the linked account itself
 }
 
 // GroupInfoResponse is the body returned by GET /api/group-info.
@@ -95,6 +96,7 @@ func groupInfoResponse(ctx context.Context, client *whatsmeow.Client, info *type
 			JID:          p.JID.String(),
 			IsAdmin:      p.IsAdmin,
 			IsSuperAdmin: p.IsSuperAdmin,
+			IsMe:         isOwnAccount(client, p.JID) || isOwnAccount(client, p.PhoneNumber) || isOwnAccount(client, p.LID),
 		}
 		if !p.PhoneNumber.IsEmpty() {
 			pi.PhoneNumber = p.PhoneNumber.User
@@ -124,6 +126,114 @@ func groupInfoResponse(ctx context.Context, client *whatsmeow.Client, info *type
 		Name:         info.Name,
 		Topic:        info.Topic,
 		Participants: participants,
+	}
+}
+
+// parseGroupJID accepts a group JID or a bare group ID.
+func parseGroupJID(raw string) (types.JID, bool) {
+	if raw == "" {
+		return types.JID{}, false
+	}
+	if !strings.Contains(raw, "@") {
+		raw += "@g.us"
+	}
+	jid, err := types.ParseJID(raw)
+	if err != nil || jid.Server != types.GroupServer {
+		return types.JID{}, false
+	}
+	return jid, true
+}
+
+// isOwnAccount reports whether jid, in phone or LID form, is the linked
+// account itself.
+func isOwnAccount(client *whatsmeow.Client, jid types.JID) bool {
+	switch jid.Server {
+	case types.DefaultUserServer:
+		return client.Store.ID != nil && jid.User == client.Store.ID.User
+	case types.HiddenUserServer:
+		return !client.Store.LID.IsEmpty() && jid.User == client.Store.LID.User
+	}
+	return false
+}
+
+// groupParticipantsHandler serves /api/group-participants-{add,remove}.
+// Removing refuses the linked account itself: leaving goes through
+// /api/group-leave so it is never a side effect of a member list.
+func groupParticipantsHandler(sessions *sessionHolder, action whatsmeow.ParticipantChange) http.HandlerFunc {
+	verb, done, countKey := "add", "Added", "added"
+	if action == whatsmeow.ParticipantChangeRemove {
+		verb, done, countKey = "remove", "Removed", "removed"
+	}
+	path := "/api/group-participants-" + verb
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		client := sessions.current()
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		writeResp := func(status int, resp map[string]interface{}) {
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(resp)
+		}
+
+		var req struct {
+			JID          string   `json:"jid"`
+			Participants []string `json:"participants"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "Invalid request format"})
+			return
+		}
+		jid, ok := parseGroupJID(req.JID)
+		if !ok {
+			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "jid must be a group JID (…@g.us)"})
+			return
+		}
+		if len(req.Participants) == 0 {
+			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "at least one participant is required"})
+			return
+		}
+		members, err := parseParticipantJIDs(req.Participants)
+		if err != nil {
+			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": err.Error()})
+			return
+		}
+		if action == whatsmeow.ParticipantChangeRemove {
+			for _, m := range members {
+				if isOwnAccount(client, m) {
+					writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "cannot remove yourself; use /api/group-leave"})
+					return
+				}
+			}
+		}
+		if !whatsappReady(client) {
+			writeResp(http.StatusServiceUnavailable, map[string]interface{}{"success": false, "message": "Not connected to WhatsApp"})
+			return
+		}
+
+		fmt.Printf("→ %s jid=%s participants=%d\n", path, jid, len(members))
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		result, err := client.UpdateGroupParticipants(ctx, jid, members, action)
+		if err != nil {
+			writeResp(http.StatusBadGateway, map[string]interface{}{"success": false, "message": fmt.Sprintf("Failed to %s participants: %v", verb, err)})
+			return
+		}
+		failed := participantFailures(result)
+		msg := fmt.Sprintf("%s %d of %d participants", done, len(result)-len(failed), len(result))
+		if len(failed) > 0 {
+			msg += fmt.Sprintf("; could not %s: %s", verb, strings.Join(failed, ", "))
+		}
+		fmt.Printf("← %s jid=%s %s=%d failed=%d\n", path, jid, countKey, len(result)-len(failed), len(failed))
+		writeResp(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": msg,
+			countKey:  len(result) - len(failed),
+			"failed":  failed,
+		})
 	}
 }
 
@@ -169,8 +279,12 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 		writeResp(http.StatusOK, map[string]interface{}{"success": true, "jid": jid.String(), "link": link})
 	}))
 
-	// Adds members to an existing group (caller must be admin).
-	mux.HandleFunc("/api/group-participants-add", auth(func(w http.ResponseWriter, r *http.Request) {
+	// Adds or removes members of an existing group (caller must be admin).
+	mux.HandleFunc("/api/group-participants-add", auth(groupParticipantsHandler(sessions, whatsmeow.ParticipantChangeAdd)))
+	mux.HandleFunc("/api/group-participants-remove", auth(groupParticipantsHandler(sessions, whatsmeow.ParticipantChangeRemove)))
+
+	// Leaves a group. The chat stays on the user's devices until deleted.
+	mux.HandleFunc("/api/group-leave", auth(func(w http.ResponseWriter, r *http.Request) {
 		client := sessions.current()
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -184,28 +298,15 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 		}
 
 		var req struct {
-			JID          string   `json:"jid"`
-			Participants []string `json:"participants"`
+			JID string `json:"jid"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "Invalid request format"})
 			return
 		}
-		if !strings.Contains(req.JID, "@") && req.JID != "" {
-			req.JID += "@g.us"
-		}
-		jid, err := types.ParseJID(req.JID)
-		if req.JID == "" || err != nil || jid.Server != types.GroupServer {
+		jid, ok := parseGroupJID(req.JID)
+		if !ok {
 			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "jid must be a group JID (…@g.us)"})
-			return
-		}
-		if len(req.Participants) == 0 {
-			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": "at least one participant is required"})
-			return
-		}
-		members, err := parseParticipantJIDs(req.Participants)
-		if err != nil {
-			writeResp(http.StatusBadRequest, map[string]interface{}{"success": false, "message": err.Error()})
 			return
 		}
 		if !whatsappReady(client) {
@@ -213,26 +314,14 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			return
 		}
 
-		fmt.Printf("→ /api/group-participants-add jid=%s participants=%d\n", jid, len(members))
-		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		fmt.Printf("→ /api/group-leave jid=%s\n", jid)
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		result, err := client.UpdateGroupParticipants(ctx, jid, members, whatsmeow.ParticipantChangeAdd)
-		if err != nil {
-			writeResp(http.StatusBadGateway, map[string]interface{}{"success": false, "message": fmt.Sprintf("Failed to add participants: %v", err)})
+		if err := client.LeaveGroup(ctx, jid); err != nil {
+			writeResp(http.StatusBadGateway, map[string]interface{}{"success": false, "message": fmt.Sprintf("Failed to leave group: %v", err)})
 			return
 		}
-		failed := participantFailures(result)
-		msg := fmt.Sprintf("Added %d of %d participants", len(result)-len(failed), len(result))
-		if len(failed) > 0 {
-			msg += "; could not add: " + strings.Join(failed, ", ")
-		}
-		fmt.Printf("← /api/group-participants-add jid=%s added=%d failed=%d\n", jid, len(result)-len(failed), len(failed))
-		writeResp(http.StatusOK, map[string]interface{}{
-			"success": true,
-			"message": msg,
-			"added":   len(result) - len(failed),
-			"failed":  failed,
-		})
+		writeResp(http.StatusOK, map[string]interface{}{"success": true, "message": "Left group " + jid.String()})
 	}))
 
 	// Sets (or clears, with an empty topic) the group description.

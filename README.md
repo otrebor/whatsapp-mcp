@@ -318,7 +318,7 @@ error and changes nothing.
 
 Get the current member list of a group, straight from WhatsApp (requires the
 bridge). Includes members who have never posted, with phone number, name and
-admin flags.
+admin flags. `is_me` marks your own account.
 
 **Parameters:**
 
@@ -370,6 +370,35 @@ the group, so this is an explicit external side effect. Members WhatsApp refuses
 **Natural Language Examples:**
 
 - "Add Bob and Carol to the Gift for Anna group"
+
+#### `remove_group_participants`
+
+Remove members from a group you are an admin of. They are removed immediately
+and see that you removed them, so this is an explicit external side effect.
+You can't remove yourself this way; use `leave_group`.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+- `participants` (required): Phone numbers with country code but no `+`, or JIDs
+
+**Natural Language Examples:**
+
+- "Remove Bob from the Gift for Anna group"
+
+#### `leave_group`
+
+Leave a group. Members see that you left, and you can only rejoin if someone
+adds you or shares an invite link. The chat stays on your devices; delete it
+with `delete_chat` if you want it gone.
+
+**Parameters:**
+
+- `group_jid` (required): Group JID; a bare ID is accepted
+
+**Natural Language Examples:**
+
+- "Leave the Gift for Anna group"
 
 #### `set_group_description`
 
