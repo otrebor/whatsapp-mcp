@@ -464,7 +464,9 @@ def bridge_status() -> dict[str, Any]:
         A dictionary with reachable (bridge answered), connected (online and
         logged in to WhatsApp), logged_in (a session is stored, even if offline),
         pairing_state (starting, awaiting_scan, timed_out, logged_out or paired;
-        None for older bridges) and a human-readable message
+        None for older bridges) and a human-readable message. history_wiped_at
+        (Unix time) appears once the previous account's local history was
+        deleted because a different account linked
     """
     return whatsapp_bridge_status()
 
@@ -545,8 +547,10 @@ def logout() -> dict[str, Any]:
     Removes this linked device from the phone (it disappears from WhatsApp >
     Linked Devices) and deletes the local session. Sending stops until someone
     scans a new QR code with get_pairing_qr; the bridge keeps running and
-    offers one within a few seconds. Local message history is kept. Only call
-    this when the user explicitly asks to log out or switch accounts.
+    offers one within a few seconds. Local message history is kept, unless a
+    different account links next: then the previous account's history is
+    deleted (unless WHATSAPP_WIPE_ON_ACCOUNT_CHANGE=false). Only call this when
+    the user explicitly asks to log out or switch accounts.
 
     Returns:
         A dictionary with success and message. Fails with "not logged in" when
