@@ -75,11 +75,39 @@ func getEnvBool(key string, def bool) bool {
 	}
 }
 
-// resolveDeviceName returns the operator-configured linked-device label from
-// WHATSAPP_DEVICE_NAME, trimmed of surrounding whitespace. An empty or unset
-// value returns "", which callers treat as "keep the whatsmeow default".
+// defaultDeviceName replaces whatsmeow's built-in label, the literal
+// "whatsmeow", which tells users nothing about what they linked. The
+// computer's hostname goes in front so several bridges on one account can be
+// told apart.
+const defaultDeviceName = "WhatsApp MCP"
+
+// maxHostnameInLabel keeps long hostnames from crowding out the product name
+// in WhatsApp's Linked Devices list.
+const maxHostnameInLabel = 32
+
+// hostname is os.Hostname, swappable in tests.
+var hostname = os.Hostname
+
+// resolveDeviceName returns the linked-device label: WHATSAPP_DEVICE_NAME,
+// trimmed of surrounding whitespace, or "<hostname> · WhatsApp MCP" when that
+// is empty or unset (plain defaultDeviceName if the hostname is unknown).
 func resolveDeviceName() string {
-	return strings.TrimSpace(os.Getenv("WHATSAPP_DEVICE_NAME"))
+	if name := strings.TrimSpace(os.Getenv("WHATSAPP_DEVICE_NAME")); name != "" {
+		return name
+	}
+	host, err := hostname()
+	if err != nil {
+		return defaultDeviceName
+	}
+	// Short name only: "laptop.local" or "build1.corp.example.com" → first label.
+	host, _, _ = strings.Cut(strings.TrimSpace(host), ".")
+	if host == "" {
+		return defaultDeviceName
+	}
+	if r := []rune(host); len(r) > maxHostnameInLabel {
+		host = string(r[:maxHostnameInLabel])
+	}
+	return host + " · " + defaultDeviceName
 }
 
 // Message represents a chat message for our client
@@ -2936,17 +2964,17 @@ func main() {
 	// Set the linked-device label shown in WhatsApp's "Linked Devices" list.
 	// whatsmeow's built-in default is the literal string "whatsmeow", which is
 	// opaque to end users who then see an unfamiliar name attached to their
-	// account. WHATSAPP_DEVICE_NAME lets an operator show a recognisable label
-	// (e.g. a product or company name) instead. Empty/unset keeps the whatsmeow
-	// default. This only takes effect at pair time — an already-paired session
-	// (whatsapp.db present) keeps the name captured when the QR was scanned; to
-	// change it, re-pair. The platform icon (DeviceProps.PlatformType) is left
-	// at whatsmeow's default on purpose: this is a labelling convenience, not a
-	// way to impersonate an official WhatsApp client.
-	if name := resolveDeviceName(); name != "" {
-		store.DeviceProps.Os = proto.String(name)
-		logger.Infof("Linked-device name set to %q (WHATSAPP_DEVICE_NAME)", name)
-	}
+	// account. The bridge uses defaultDeviceName instead, and
+	// WHATSAPP_DEVICE_NAME lets an operator show their own label (e.g. a
+	// product or company name). This only takes effect at pair time — an
+	// already-paired session (whatsapp.db present) keeps the name captured when
+	// the QR was scanned; to change it, re-pair. The platform icon
+	// (DeviceProps.PlatformType) is left at whatsmeow's default on purpose: this
+	// is a labelling convenience, not a way to impersonate an official WhatsApp
+	// client.
+	deviceName := resolveDeviceName()
+	store.DeviceProps.Os = proto.String(deviceName)
+	logger.Infof("Linked-device name for new pairings: %q (set WHATSAPP_DEVICE_NAME to change)", deviceName)
 
 	// Create client instance
 	client := whatsmeow.NewClient(deviceStore, logger)
