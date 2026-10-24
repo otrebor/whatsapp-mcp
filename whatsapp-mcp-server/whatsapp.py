@@ -1620,6 +1620,28 @@ def delete_chat(chat_jid: str) -> dict[str, Any]:
         return {"success": False, "message": f"Request error: {str(e)}"}
 
 
+DISAPPEARING_DURATIONS = ("off", "24h", "7d", "90d")
+
+
+def set_disappearing_messages(chat_jid: str, duration: str) -> dict[str, Any]:
+    """Turn disappearing messages on (24h, 7d, 90d) or off for a chat through the bridge."""
+    chat_jid = chat_jid.strip().lstrip("+")
+    if not chat_jid:
+        return {"success": False, "message": "Chat JID must be provided"}
+    duration = duration.strip().lower()
+    if duration not in DISAPPEARING_DURATIONS:
+        return {"success": False, "message": f"Duration must be one of {', '.join(DISAPPEARING_DURATIONS)}"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/disappearing-timer",
+            json={"chat_jid": chat_jid, "duration": duration},
+            headers=_bridge_headers(),
+        )
+        return _group_response(response)
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+
+
 def create_group(name: str, participants: list[str]) -> dict[str, Any]:
     """Create a WhatsApp group through the bridge. The caller becomes admin."""
     name = name.strip()

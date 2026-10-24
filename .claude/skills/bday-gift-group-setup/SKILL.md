@@ -1,13 +1,13 @@
 ---
-name: bday-present
+name: bday-gift-group-setup
 description: Organize a group birthday present from a WhatsApp birthday-invite group. Creates a "present" group with everyone except the birthday person, records who couldn't be added (privacy settings), DMs them the invite link, and posts the welcome message. Use when asked to set up / organize a birthday present or gift collection for someone.
 ---
 
 # Birthday present group
 
 Run with the WhatsApp MCP tools (`list_chats`, `get_group_participants`,
-`create_group`, `set_group_description`, `get_group_invite_link`,
-`send_message`). Phone numbers go to these tools with country code and **no +**
+`create_group`, `set_group_description`, `set_disappearing_messages`,
+`get_group_invite_link`, `send_message`). Phone numbers go to these tools with country code and **no +**
 (e.g. `41791234567`).
 Every send is visible to real people: **nothing is created or sent before the
 user approves the plan in step 5.**
@@ -53,6 +53,9 @@ Ask only for what's missing:
 - **Event**: short label and date (e.g. "apero on *23 Oct*").
 - **Contribution**: how to pay (e.g. TWINT to the user's number) and deadline.
 - **Assistant persona**: default "*Claudio*, Roberto's AI assistant".
+- **Disappearing messages**: default `90d`, so the collection and the party
+  are long over when messages vanish. `off`, `24h` and `7d` are the other
+  options; `7d` or less can delete payment confirmations before the party.
 
 ## 2. Read the source group
 
@@ -95,7 +98,8 @@ characters; if WhatsApp still rejects it, e.g. 406, retry with
 ## 5. Approval gate
 
 Show the user: group name, guest count + list (name/phone), who is excluded and
-why, and both messages. Wait for an explicit go-ahead. Apply any edits to the
+why, the disappearing-messages setting, and both messages. Wait for an
+explicit go-ahead. Apply any edits to the
 files before continuing.
 
 ## 6. Create the group
@@ -103,6 +107,11 @@ files before continuing.
 `create_group(name, participants)`. Save the returned `jid`. Then
 `set_group_description(jid, <welcome message>)`; if that fails, report it and
 continue (the group already exists).
+
+Unless the user chose `off`, `set_disappearing_messages(jid, <duration>)`
+before any message is sent, so the welcome message disappears too. On failure
+(e.g. an older bridge without the tool), report it and continue; the user can
+turn it on in WhatsApp under the group's settings.
 
 ## 7. Record who wasn't added
 
@@ -134,7 +143,8 @@ blindly). Record each result.
 
 ## 10. Summary
 
-Write `summary.md` (date, group name + JID, invite link, added count,
+Write `summary.md` (date, group name + JID, invite link, disappearing-messages
+setting, added count,
 not-added list with DM status, any errors) and give the user a short recap
 in chat.
 

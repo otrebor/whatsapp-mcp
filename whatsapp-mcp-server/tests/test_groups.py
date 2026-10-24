@@ -130,6 +130,28 @@ def test_leave_group_rejects_non_group_jid(monkeypatch):
     assert calls == []
 
 
+def test_set_disappearing_messages_calls_bridge(monkeypatch):
+    calls = []
+    payload = {"success": True, "message": "Disappearing messages set to 90 days", "duration_seconds": 7776000}
+    _capture(monkeypatch, "post", calls, DummyResponse(payload=payload))
+
+    result = whatsapp.set_disappearing_messages(" 123@g.us ", " 90D ")
+
+    assert result == payload
+    assert calls[0]["url"].endswith("/disappearing-timer")
+    assert calls[0]["json"] == {"chat_jid": "123@g.us", "duration": "90d"}
+
+
+def test_set_disappearing_messages_validates_before_calling_bridge(monkeypatch):
+    calls = []
+    _capture(monkeypatch, "post", calls, DummyResponse(payload={}))
+
+    assert whatsapp.set_disappearing_messages("", "7d")["success"] is False
+    assert whatsapp.set_disappearing_messages("+41791234567", "3d")["success"] is False
+    assert whatsapp.set_disappearing_messages("41791234567", "")["success"] is False
+    assert calls == []
+
+
 def test_delete_chat_calls_bridge(monkeypatch):
     calls = []
     _capture(monkeypatch, "post", calls, DummyResponse(payload={"success": True, "message": "deleted"}))

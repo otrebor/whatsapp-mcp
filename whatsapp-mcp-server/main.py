@@ -96,6 +96,9 @@ from whatsapp import (
     send_reaction as whatsapp_send_reaction,
 )
 from whatsapp import (
+    set_disappearing_messages as whatsapp_set_disappearing_messages,
+)
+from whatsapp import (
     set_group_description as whatsapp_set_group_description,
 )
 
@@ -672,6 +675,26 @@ def leave_group(group_jid: str) -> dict[str, Any]:
         A dictionary containing success status and a status message
     """
     return whatsapp_leave_group(group_jid)
+
+
+@mcp.tool()
+def set_disappearing_messages(chat_jid: str, duration: str) -> dict[str, Any]:
+    """Turn disappearing messages on or off for a WhatsApp chat or group.
+
+    External side effect: everyone in the chat sees the change, and new
+    messages vanish for all of them after the duration. Messages sent before
+    the change are not affected. In groups that restrict settings to admins,
+    only admins can change it.
+
+    Args:
+        chat_jid: The chat JID (group "…@g.us" or user JID), or a phone number
+                  with country code but no +
+        duration: One of "off", "24h", "7d", "90d" (WhatsApp's only options)
+
+    Returns:
+        A dictionary with success, message, chat_jid and duration_seconds
+    """
+    return whatsapp_set_disappearing_messages(chat_jid, duration)
 
 
 @mcp.tool()

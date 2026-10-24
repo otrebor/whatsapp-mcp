@@ -11,12 +11,12 @@ Every step after the approval gate is visible to real people and can't be
 undone: **nothing is sent or removed before the user approves in step 5.**
 
 Work folder: `birthdays/<name-lowercase>/` in the repo root (gitignored), the
-same one `bday-present` used. Message template:
+same one `bday-gift-group-setup` used. Message template:
 `birthdays/templates/thank-you-message.md` (tracked).
 
 ## 0. Preflight
 
-Same as the `bday-present` skill's step 0 (MCP tools available,
+Same as the `bday-gift-group-setup` skill's step 0 (MCP tools available,
 `bridge_status` connected, pair if needed). Stop on any failure.
 
 ## 1. Pick the group
