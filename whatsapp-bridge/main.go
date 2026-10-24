@@ -2433,6 +2433,9 @@ func newRESTMux(sessions *sessionHolder, messageStore *MessageStore, port int, t
 	// Delete-chat-for-me endpoint (see chat_delete.go)
 	registerChatDeleteEndpoint(mux, auth, sessions, messageStore)
 
+	// Disappearing-messages timer endpoint (see disappearing.go)
+	registerDisappearingTimerEndpoint(mux, auth, sessions, messageStore)
+
 	// Pairing QR code endpoint (see pairing.go)
 	registerPairingEndpoints(mux, auth, sessions)
 

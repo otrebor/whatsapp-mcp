@@ -414,6 +414,22 @@ change, so this is an explicit external side effect.
 
 - "Set the description of the Gift for Anna group to the welcome text"
 
+#### `set_disappearing_messages`
+
+Turn disappearing messages on or off for a chat or group. Everyone in the chat
+sees the change, and new messages vanish for all of them after the duration;
+earlier messages are not affected. Groups that restrict settings to admins only
+accept the change from an admin.
+
+**Parameters:**
+
+- `chat_jid` (required): Group or user JID, or a phone number with country code but no `+`
+- `duration` (required): `off`, `24h`, `7d` or `90d` (WhatsApp's only options)
+
+**Natural Language Examples:**
+
+- "Turn on 7-day disappearing messages in the Gift for Anna group"
+
 #### `create_group`
 
 Create a new group with the given members; you are added as admin. Members are
