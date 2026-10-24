@@ -286,9 +286,24 @@ page asks for the one in `whatsapp-bridge/store/.bridge-token`.
 Unlink the bridge from your WhatsApp account (`POST /api/logout`). The device
 disappears from WhatsApp > Linked Devices and the local session is deleted, but
 the bridge keeps running and offers a new QR code within a few seconds, so you
-can link the same or another account with `get_pairing_qr`. Local message
-history in `messages.db` is kept; if you link a different number, its chats are
-listed alongside the old ones.
+can link the same or another account with `get_pairing_qr`.
+
+Local message history in `messages.db` survives the logout. What happens on the
+next link depends on the account:
+
+- **Same account** (the usual case: re-linking after a logout or an expired
+  session): history is kept. WhatsApp's history sync only re-sends recent
+  months, so the local copy is the only full one.
+- **Different account**: the previous account's chats, messages, calls and
+  downloaded media are deleted before the new account's history arrives, so
+  the two don't mix. `bridge_status` / `/api/health` then report
+  `history_wiped_at`. Set `WHATSAPP_WIPE_ON_ACCOUNT_CHANGE=false` to keep
+  everything instead. Accounts are compared by LID (WhatsApp's per-account
+  link ID) when both are known, otherwise by phone number. WhatsApp's "Change
+  number" is expected to keep the LID and so not count as a different account,
+  but that hasn't been verified; set the variable to `false` before changing
+  numbers if you want to be sure. Installs from before this check record their
+  account on the next start and are never wiped on that first link.
 
 The bridge must be connected to send the unlink request; offline it returns an
 error and changes nothing.
@@ -634,6 +649,7 @@ Copy `.env.example` to `.env` and configure as needed:
 | `WEBHOOK_ENABLED`      | `true`                                   | Set to `false` to disable outbound webhooks  |
 | `WHATSAPP_AUTO_DOWNLOAD_MEDIA` | `true` | Automatically download incoming media, including webhook image bytes. `false` keeps webhook metadata/text without `mediaBase64` and leaves downloads to `/api/download` (`download_media`); delayed downloads may fail after media expires. Status messages are stored but never auto-downloaded or forwarded |
 | `FORWARD_SELF`         | `true`                                   | Forward messages sent by self                |
+| `WHATSAPP_WIPE_ON_ACCOUNT_CHANGE` | `true` | When a different account links, delete the previous account's local history and media. Re-linking the same account keeps it. See [`logout`](#logout) |
 | `WHATSAPP_DB_PATH`     | `../whatsapp-bridge/store/messages.db`   | Path to SQLite database                      |
 | `WHATSMEOW_DB_PATH`    | `../whatsapp-bridge/store/whatsapp.db`   | whatsmeow DB used for LID ↔ phone resolution |
 | `WHATSAPP_API_URL`     | `http://localhost:8080/api`              | Go bridge REST API URL                       |

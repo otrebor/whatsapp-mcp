@@ -1317,6 +1317,10 @@ def bridge_status() -> dict[str, Any]:
     }
     if result.get("pairing_error"):
         status["pairing_error"] = result["pairing_error"]
+    if result.get("history_wiped_at"):
+        # Unix time the previous account's history was deleted after a
+        # different account linked (WHATSAPP_WIPE_ON_ACCOUNT_CHANGE).
+        status["history_wiped_at"] = result["history_wiped_at"]
     return status
 
 

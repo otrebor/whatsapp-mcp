@@ -295,6 +295,9 @@ func ensureMessageStoreSchema(db *sql.DB) error {
 	if err := ensureColumn(db, "messages", "quoted_message_id", "TEXT"); err != nil {
 		return fmt.Errorf("failed to ensure messages.quoted_message_id column: %w", err)
 	}
+	if err := ensureMetaTable(db); err != nil {
+		return fmt.Errorf("failed to ensure bridge_meta table: %w", err)
+	}
 	return nil
 }
 
@@ -2423,6 +2426,9 @@ func newRESTMux(sessions *sessionHolder, messageStore *MessageStore, port int, t
 		if pairing.LastError != "" {
 			status["pairing_error"] = pairing.LastError
 		}
+		if wipedAt, ok := messageStore.historyWipedAt(); ok {
+			status["history_wiped_at"] = wipedAt.Unix()
+		}
 		if !whatsappReady(client) {
 			status["status"] = "disconnected"
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -3054,6 +3060,9 @@ func main() {
 			sig := newSessionSignals()
 			if device.ID != nil {
 				sig.setOwnJID(*device.ID)
+				if err := messageStore.recordOwnerIfMissing(ownerFromJIDs(*device.ID, device.LID)); err != nil {
+					logger.Warnf("Failed to record the linked account: %v", err)
+				}
 			}
 			client.AddEventHandler(newEventHandler(client, messageStore, sig, logger))
 			sessions.set(client)
@@ -3200,6 +3209,11 @@ func newEventHandler(client *whatsmeow.Client, messageStore *MessageStore, sig *
 
 		case *events.PairSuccess:
 			sig.setOwnJID(v.ID)
+			// Synchronous on purpose: history sync for the new account must
+			// not start writing before the old account's history is gone.
+			if _, err := messageStore.onAccountLinked(ownerFromJIDs(v.ID, v.LID), wipeOnAccountChange, "store", logger); err != nil {
+				logger.Errorf("Account change handling failed: %v", err)
+			}
 
 		case *events.Disconnected:
 			logger.Warnf("⚠️  Disconnected from WhatsApp servers, will attempt reconnection...")

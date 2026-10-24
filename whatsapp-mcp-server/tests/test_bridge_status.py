@@ -102,3 +102,17 @@ def test_bridge_status_old_bridge_without_pairing_fields(monkeypatch):
 
     assert result["logged_in"] is None
     assert result["pairing_state"] is None
+
+
+def test_bridge_status_reports_history_wipe(monkeypatch):
+    payload = {"connected": True, "logged_in": True, "pairing_state": "paired", "history_wiped_at": 1792840000}
+    _fake_get(monkeypatch, [], DummyResponse(payload=payload))
+
+    assert whatsapp.bridge_status()["history_wiped_at"] == 1792840000
+
+
+def test_bridge_status_omits_history_wipe_when_none(monkeypatch):
+    payload = {"connected": True, "logged_in": True, "pairing_state": "paired"}
+    _fake_get(monkeypatch, [], DummyResponse(payload=payload))
+
+    assert "history_wiped_at" not in whatsapp.bridge_status()
