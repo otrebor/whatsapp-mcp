@@ -2,6 +2,7 @@ import os
 import signal
 import sys
 import tempfile
+import webbrowser
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP, Image
@@ -69,6 +70,9 @@ from whatsapp import (
 )
 from whatsapp import (
     mark_messages_read as whatsapp_mark_messages_read,
+)
+from whatsapp import (
+    pairing_page_url as whatsapp_pairing_page_url,
 )
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
@@ -476,30 +480,56 @@ def get_pairing_qr(open_viewer: bool = False) -> Any:
     every 20s; call again if it expired. Then poll bridge_status until
     connected is true.
 
+    If the client can't show images to the user (many can't), pass
+    open_viewer=True: it opens the bridge's live pairing page in the browser,
+    which always shows the current code and confirms when linked, so there is
+    no race against the 20s rotation.
+
     The image is a live login code: anyone who scans it before it expires can
     link their own WhatsApp account to this bridge. It expires within about a
     minute, but treat it as sensitive and do not repeat it elsewhere.
 
     Args:
-        open_viewer: Also open the image in the OS image viewer, for clients
-            that can't display images. Writes a temporary file that is deleted
-            on the next call
+        open_viewer: Open the live pairing page in the browser. Bridges without
+            that page fall back to opening the image in the OS image viewer
+            (a temporary file, deleted on the next call)
 
     Returns:
         The QR image plus instructions, or a dictionary explaining why there is
         no code (already linked, bridge not running, logged out, ...)
     """
+    page = whatsapp_pairing_page_url() if open_viewer else None
+    page_note = ""
+    if page:
+        pairing_viewer.cleanup()
+        open_url, display_url = page
+        try:
+            pairing_viewer.open_page(open_url)
+            page_note = (
+                f"Opened the live pairing page in the browser ({display_url}). It always shows the current "
+                "code and says when the device is linked; no need to call get_pairing_qr again."
+            )
+        except (OSError, webbrowser.Error) as exc:
+            page = None
+            page_note = f"Could not open the browser: {exc}"
+
     result = whatsapp_get_pairing_qr()
     if "png" not in result:
-        pairing_viewer.cleanup()
-        return result
+        if not page:
+            pairing_viewer.cleanup()
+            return result
+        return {**result, "message": " ".join(filter(None, [result.get("message"), page_note]))}
 
     instructions = (
         f"Pairing QR code #{result.get('seq') or '?'}. Scan in WhatsApp > Settings > Linked Devices > "
         "Link a device. Codes rotate about every 20s; call get_pairing_qr again if it expired. "
         "Poll bridge_status until connected is true."
     )
-    if open_viewer:
+    if page:
+        instructions += " " + page_note
+    elif open_viewer:
+        if page_note:
+            instructions += " " + page_note
         try:
             path = pairing_viewer.show(result["png"])
             instructions += f" Opened in the image viewer: {path}"

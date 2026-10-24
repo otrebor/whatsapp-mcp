@@ -2405,6 +2405,9 @@ func newRESTMux(sessions *sessionHolder, messageStore *MessageStore, port int, t
 	// Pairing QR code endpoint (see pairing.go)
 	registerPairingEndpoints(mux, auth, sessions)
 
+	// Live pairing page for browsers (see pairing_page.go)
+	registerPairingPage(mux, allowedHosts)
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		client := sessions.current()

@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 
@@ -1422,6 +1423,30 @@ def get_pairing_qr() -> dict[str, Any]:
             return _pairing_qr_result(waited)
         status = bridge_status()
     return {"success": False, **status}
+
+
+def pairing_page_url() -> tuple[str, str] | None:
+    """Locate the bridge's live pairing page.
+
+    Returns (url_to_open, display_url), or None when the bridge doesn't serve
+    the page (older bridge, unreachable, custom API path) or no token is known.
+    url_to_open carries the token in the fragment, which browsers never send
+    to the server; display_url has no token and is safe to show.
+    """
+    base = WHATSAPP_API_BASE_URL.rstrip("/")
+    if not base.endswith("/api"):
+        return None
+    page = base[: -len("/api")] + "/pairing"
+    token = _read_bridge_token()
+    if not token:
+        return None
+    try:
+        response = requests.get(page, timeout=3)
+    except requests.RequestException:
+        return None
+    if response.status_code != 200 or "text/html" not in response.headers.get("Content-Type", ""):
+        return None
+    return f"{page}#{urlencode({'token': token})}", page
 
 
 def logout() -> dict[str, Any]:

@@ -140,6 +140,8 @@ def test_tool_passes_through_status_without_code(monkeypatch):
 def test_tool_open_viewer_writes_private_file_and_cleans_up(monkeypatch):
     opened = []
     monkeypatch.setattr(pairing_viewer, "_open", opened.append)
+    # A bridge without the live pairing page: fall back to the image viewer.
+    monkeypatch.setattr(main, "whatsapp_pairing_page_url", lambda: None)
     monkeypatch.setattr(main, "whatsapp_get_pairing_qr", lambda: {"success": True, "png": PNG, "seq": "1"})
 
     _, text = main.get_pairing_qr(open_viewer=True)

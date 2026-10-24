@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Link WhatsApp</title>
+<link rel="stylesheet" href="/pairing/app.css">
+<script src="/pairing/app.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Link WhatsApp</h1>
+  <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+
+  <div id="qr-box" class="qr" hidden>
+    <img id="qr" alt="WhatsApp pairing QR code">
+  </div>
+
+  <p id="detail" class="detail"></p>
+  <button id="restart" type="button" hidden>Show a new code</button>
+  <button id="unlink" class="danger" type="button" hidden>Unlink this device</button>
+
+  <form id="token-form" hidden>
+    <label for="token">Bridge token</label>
+    <p class="hint">Open this page from the <code>get_pairing_qr</code> tool, or paste the token from
+      <code>whatsapp-bridge/store/.bridge-token</code>.</p>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" required>
+    <button type="submit">Continue</button>
+  </form>
+
+  <p class="note">This code links a device to your WhatsApp account. Don't share it or this page.</p>
+</main>
+</body>
+</html>

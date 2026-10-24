@@ -58,7 +58,10 @@ A Model Context Protocol (MCP) server for WhatsApp, enabling Claude to read and 
    `whatsapp-bridge/store/.bridge-token`. Scan the QR code with WhatsApp on
    your phone to authenticate. If you can't see the terminal (launchd,
    systemd, a hidden window), ask your MCP client to call `get_pairing_qr`
-   instead: the REST API starts before pairing and serves the current code.
+   with `open_viewer: true` instead: it opens a live pairing page in your
+   browser (`http://localhost:8080/pairing`) that always shows the current
+   code, says when the device is linked, and has an **Unlink this device**
+   button.
 
 3. **Configure Claude Desktop**
 
@@ -257,9 +260,22 @@ it first can link their own account to your bridge, so don't share it.
 
 **Parameters:**
 
-- `open_viewer` (optional, default `false`): also open the image in the OS
-  image viewer, for clients that can't display images. The temporary file is
-  deleted on the next call.
+- `open_viewer` (optional, default `false`): open the bridge's live pairing
+  page in the browser, for clients that can't show images to the user. The
+  page polls the bridge every 2 seconds, so it always shows the current code
+  (no race against the 20-second rotation). It confirms when the device is
+  linked, can restart a timed-out pairing, and can unlink the device. Bridges
+  without the page fall back to opening the PNG in the OS image viewer (a
+  temporary file, deleted on the next call).
+
+The page (`GET /pairing`, plus `/pairing/app.js` and `/pairing/app.css`)
+contains no secrets and is served without the token, behind the same
+loopback bind and Host allow-list as the API. Its script calls the API with
+the bearer token, which `get_pairing_qr` passes in the URL fragment
+(`#token=…`). Browsers never send fragments to the server; the page moves the
+token to `sessionStorage` (that tab only) and removes it from the address bar.
+The fragment can still end up in browser history. Opened without a token, the
+page asks for the one in `whatsapp-bridge/store/.bridge-token`.
 
 **Natural Language Examples:**
 
