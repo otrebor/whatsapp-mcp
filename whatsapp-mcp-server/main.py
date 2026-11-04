@@ -475,7 +475,10 @@ def bridge_status() -> dict[str, Any]:
         pairing_state (starting, awaiting_scan, timed_out, logged_out or paired;
         None for older bridges) and a human-readable message. history_wiped_at
         (Unix time) appears once the previous account's local history was
-        deleted because a different account linked
+        deleted because a different account linked. offline_sync reports the
+        catch-up of events missed while offline (in_progress, expected and
+        per-kind totals, started_at, then completed_at and count); while
+        in_progress, recently received messages may not be stored yet
     """
     return whatsapp_bridge_status()
 

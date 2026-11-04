@@ -1321,6 +1321,15 @@ def bridge_status() -> dict[str, Any]:
         # Unix time the previous account's history was deleted after a
         # different account linked (WHATSAPP_WIPE_ON_ACCOUNT_CHANGE).
         status["history_wiped_at"] = result["history_wiped_at"]
+    offline_sync = result.get("offline_sync")
+    if offline_sync:
+        # Catch-up of events missed while offline; messages.db lags the phone
+        # until it completes. Older bridges omit it.
+        status["offline_sync"] = offline_sync
+        if connected and offline_sync.get("in_progress"):
+            status["message"] += (
+                f"; catching up on {offline_sync.get('expected', 0)} missed events, recent messages may be missing"
+            )
     return status
 
 

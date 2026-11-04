@@ -2452,6 +2452,7 @@ func newRESTMux(sessions *sessionHolder, messageStore *MessageStore, port int, t
 			"connected":     whatsappReady(client),
 			"logged_in":     client.Store.ID != nil,
 			"pairing_state": pairing.State,
+			"offline_sync":  bridgeOfflineSync.snapshot(),
 			"timestamp":     time.Now().Unix(),
 		}
 		if pairing.LastError != "" {
@@ -3233,7 +3234,17 @@ func newEventHandler(client *whatsmeow.Client, messageStore *MessageStore, sig *
 		case *events.Connected:
 			logger.Infof("✓ Successfully connected to WhatsApp servers")
 
+		case *events.OfflineSyncPreview:
+			logger.Infof("Catching up on %d missed events (messages=%d receipts=%d notifications=%d appdata=%d)",
+				v.Total, v.Messages, v.Receipts, v.Notifications, v.AppDataChanges)
+			bridgeOfflineSync.preview(v)
+
+		case *events.OfflineSyncCompleted:
+			logger.Infof("Offline catch-up complete (%d events)", v.Count)
+			bridgeOfflineSync.completed(v)
+
 		case *events.LoggedOut:
+			bridgeOfflineSync.reset()
 			logger.Warnf("⚠️  Device logged out (%v); a new QR code will follow", v.Reason)
 			bridgePairing.setState(pairingLoggedOut, fmt.Sprintf("logged out: %v", v.Reason))
 			notify(sig.loggedOut)
@@ -3248,16 +3259,19 @@ func newEventHandler(client *whatsmeow.Client, messageStore *MessageStore, sig *
 
 		case *events.Disconnected:
 			logger.Warnf("⚠️  Disconnected from WhatsApp servers, will attempt reconnection...")
+			bridgeOfflineSync.reset()
 			// Signal reconnection needed
 			notify(sig.reconnect)
 
 		case *events.ConnectFailure:
 			logger.Errorf("❌ Connection failure: %v", v.Reason)
+			bridgeOfflineSync.reset()
 			// Signal reconnection needed
 			notify(sig.reconnect)
 
 		case *events.StreamError:
 			logger.Errorf("❌ Stream error: %v", v.Code)
+			bridgeOfflineSync.reset()
 			// Signal reconnection needed
 			notify(sig.reconnect)
 
@@ -3267,6 +3281,7 @@ func newEventHandler(client *whatsmeow.Client, messageStore *MessageStore, sig *
 			// so we must handle it explicitly. Wait briefly to avoid ping-ponging
 			// with the other client, then reconnect.
 			logger.Warnf("⚠️  Stream replaced by another session — will reconnect after 30s")
+			bridgeOfflineSync.reset()
 			go func() {
 				time.Sleep(30 * time.Second)
 				notify(sig.reconnect)

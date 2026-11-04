@@ -116,3 +116,32 @@ def test_bridge_status_omits_history_wipe_when_none(monkeypatch):
     _fake_get(monkeypatch, [], DummyResponse(payload=payload))
 
     assert "history_wiped_at" not in whatsapp.bridge_status()
+
+
+def test_bridge_status_reports_offline_sync_in_progress(monkeypatch):
+    offline_sync = {"in_progress": True, "expected": 42, "messages": 30, "started_at": 1793750000}
+    payload = {"connected": True, "logged_in": True, "pairing_state": "paired", "offline_sync": offline_sync}
+    _fake_get(monkeypatch, [], DummyResponse(payload=payload))
+
+    result = whatsapp.bridge_status()
+
+    assert result["offline_sync"] == offline_sync
+    assert "catching up on 42 missed events" in result["message"]
+
+
+def test_bridge_status_offline_sync_completed_keeps_plain_message(monkeypatch):
+    offline_sync = {"in_progress": False, "expected": 42, "count": 42, "completed_at": 1793750010}
+    payload = {"connected": True, "logged_in": True, "pairing_state": "paired", "offline_sync": offline_sync}
+    _fake_get(monkeypatch, [], DummyResponse(payload=payload))
+
+    result = whatsapp.bridge_status()
+
+    assert result["offline_sync"]["count"] == 42
+    assert result["message"] == "Bridge is connected to WhatsApp"
+
+
+def test_bridge_status_omits_offline_sync_for_old_bridges(monkeypatch):
+    payload = {"connected": True, "logged_in": True, "pairing_state": "paired"}
+    _fake_get(monkeypatch, [], DummyResponse(payload=payload))
+
+    assert "offline_sync" not in whatsapp.bridge_status()
