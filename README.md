@@ -234,11 +234,18 @@ Besides `reachable` and `connected`, it reports `logged_in` (a session is
 stored, even while offline) and `pairing_state`: `starting`, `awaiting_scan`,
 `timed_out`, `logged_out` or `paired` (`None` for older bridges).
 
+After a reconnect WhatsApp delivers the events missed while offline.
+`offline_sync` (also on `/api/health`) tracks that catch-up: `in_progress`, the
+expected totals (`expected`, `messages`, `receipts`, `notifications`,
+`app_data_changes`) and `started_at`, then `completed_at` and `count` once done.
+While it is in progress, recently received messages may not be stored yet.
+
 **Parameters:** none
 
 **Natural Language Examples:**
 
 - "Is the WhatsApp bridge running?"
+- "Is the bridge still catching up on missed messages?"
 
 #### `get_pairing_qr`
 
