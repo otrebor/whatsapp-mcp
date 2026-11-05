@@ -15,7 +15,6 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
-	"runtime"
 )
 
 // terminalQR reports whether pairing QR codes are drawn on stdout. The tray
@@ -141,15 +140,6 @@ func pngToICO(pngData []byte, size int) []byte {
 	_ = binary.Write(&buf, binary.LittleEndian, [2]uint32{uint32(len(pngData)), 6 + 16})
 	buf.Write(pngData)
 	return buf.Bytes()
-}
-
-// trayIconBytes returns the icon in the format the current OS's tray expects.
-func trayIconBytes(kind trayIcon) []byte {
-	p := trayIconPNG(kind)
-	if runtime.GOOS == "windows" {
-		return pngToICO(p, trayIconSize)
-	}
-	return p
 }
 
 // rotateLog renames path to path+".1" (replacing an older copy) when it is

@@ -291,6 +291,15 @@ func (t *trayApp) copyToClipboard(text string) {
 	}()
 }
 
+// trayIconBytes returns the icon in the format the current OS's tray expects.
+func trayIconBytes(kind trayIcon) []byte {
+	p := trayIconPNG(kind)
+	if runtime.GOOS == "windows" {
+		return pngToICO(p, trayIconSize)
+	}
+	return p
+}
+
 func absPath(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		return abs
