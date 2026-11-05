@@ -995,6 +995,9 @@ the API port is already in use. The menu has:
 - **Open store folder** / **Open log file**
 - **Copy bridge token**: copies the REST bearer token to the clipboard
   (`clip`, `pbcopy`, `wl-copy` or `xclip`).
+- **Log out… ▸ Yes, unlink this device**: same as `POST /api/logout`. The
+  bridge keeps running and shows a new QR code. Enabled only while connected.
+  The submenu acts as the confirmation step.
 - **Quit**: disconnects and exits, like Ctrl+C.
 
 How the tray build differs from the default build:

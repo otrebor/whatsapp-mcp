@@ -128,6 +128,38 @@ func writePairingJSON(w http.ResponseWriter, status int, body map[string]interfa
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+var (
+	errLogoutNotLoggedIn  = errors.New("not logged in")
+	errLogoutNotConnected = errors.New("not connected to WhatsApp")
+)
+
+// logoutSession unlinks this device from the phone and tells the session
+// manager to start a new session (and QR code). Shared by POST /api/logout
+// and the tray's "Log out" item; reason is kept as the pairing error for
+// diagnostics.
+func logoutSession(ctx context.Context, sessions *sessionHolder, reason string) error {
+	client := sessions.current()
+	if client == nil || client.Store == nil || client.Store.ID == nil {
+		return errLogoutNotLoggedIn
+	}
+	// Logout sends the unlink request over the live connection; offline,
+	// it would fail after the local session is already doubtful.
+	if !whatsappReady(client) {
+		return errLogoutNotConnected
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := logoutClient(ctx, client); err != nil {
+		if errors.Is(err, whatsmeow.ErrNotLoggedIn) {
+			return errLogoutNotLoggedIn
+		}
+		return fmt.Errorf("logout failed: %w", err)
+	}
+	bridgePairing.setState(pairingLoggedOut, reason)
+	notify(sessions.logoutRequested)
+	return nil
+}
+
 // registerPairingEndpoints serves the live pairing QR code as a PNG and lets
 // callers log out or restart pairing without restarting the bridge.
 func registerPairingEndpoints(mux *http.ServeMux, auth func(http.HandlerFunc) http.HandlerFunc, sessions *sessionHolder) {
@@ -136,37 +168,24 @@ func registerPairingEndpoints(mux *http.ServeMux, auth func(http.HandlerFunc) ht
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		client := sessions.current()
-		if client == nil || client.Store == nil || client.Store.ID == nil {
+		err := logoutSession(r.Context(), sessions, "logged out via /api/logout")
+		switch {
+		case errors.Is(err, errLogoutNotLoggedIn):
 			writePairingJSON(w, http.StatusConflict, map[string]interface{}{
 				"success": false,
 				"message": "not logged in",
 			})
 			return
-		}
-		// Logout sends the unlink request over the live connection; offline,
-		// it would fail after the local session is already doubtful.
-		if !requireConnected(w, client) {
+		case errors.Is(err, errLogoutNotConnected):
+			requireConnected(w, sessions.current())
 			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		if err := logoutClient(ctx, client); err != nil {
-			if errors.Is(err, whatsmeow.ErrNotLoggedIn) {
-				writePairingJSON(w, http.StatusConflict, map[string]interface{}{
-					"success": false,
-					"message": "not logged in",
-				})
-				return
-			}
+		case err != nil:
 			writePairingJSON(w, http.StatusBadGateway, map[string]interface{}{
 				"success": false,
-				"message": fmt.Sprintf("logout failed: %v", err),
+				"message": err.Error(),
 			})
 			return
 		}
-		bridgePairing.setState(pairingLoggedOut, "logged out via /api/logout")
-		notify(sessions.logoutRequested)
 		writePairingJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "logged out; a new QR code will be available shortly",

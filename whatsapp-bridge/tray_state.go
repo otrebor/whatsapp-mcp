@@ -46,7 +46,8 @@ type trayView struct {
 	Icon    trayIcon
 	Status  string // first, disabled menu line and tooltip
 	Detail  string // optional second line; empty hides it
-	CanPair bool   // enables "Show pairing QR"
+	CanPair   bool // enables "Show pairing QR"
+	CanLogout bool // enables "Log out…" (logout needs a live connection)
 }
 
 // deriveTrayView maps the bridge state to the tray. h is nil until runBridge
@@ -65,13 +66,13 @@ func deriveTrayView(h *healthSnapshot) trayView {
 	case h.PairingState == pairingStarting:
 		return trayView{Icon: trayIconAmber, Status: "Starting…"}
 	case h.Connected && h.OfflineSync.InProgress:
-		v := trayView{Icon: trayIconAmber, Status: "Syncing…"}
+		v := trayView{Icon: trayIconAmber, Status: "Syncing…", CanLogout: true}
 		if h.OfflineSync.Messages > 0 {
 			v.Detail = fmt.Sprintf("Catching up on %d messages", h.OfflineSync.Messages)
 		}
 		return v
 	case h.Connected:
-		return trayView{Icon: trayIconGreen, Status: "Connected"}
+		return trayView{Icon: trayIconGreen, Status: "Connected", CanLogout: true}
 	default:
 		return trayView{Icon: trayIconGrey, Status: "Reconnecting…"}
 	}

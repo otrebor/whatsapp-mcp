@@ -22,8 +22,7 @@ cleanly.
   are unchanged.
 - No changes to the REST API, `messages.db` / `whatsapp.db`, or the MCP server.
 
-Non-goals for v1: logout from the tray (destructive, and the tray has no
-confirm dialog), toggling webhooks at runtime, autostart at login, installers
+Non-goals for v1: toggling webhooks at runtime, autostart at login, installers
 or `.app` bundles.
 
 ## What already exists
@@ -257,3 +256,6 @@ Where the implementation differs from the design above:
   GNOME AppIndicator requirement instead.
 - **Windows helpers** (`rundll32`, `clip`) are started with `CREATE_NO_WINDOW`
   (`tray_windows.go`) so no console window flashes.
+- **Logout was added** after all, as **Log out… ▸ Yes, unlink this
+  device**. The submenu is the confirmation. `/api/logout` and the tray share
+  `logoutSession` (`pairing.go`), and the HTTP responses are unchanged.

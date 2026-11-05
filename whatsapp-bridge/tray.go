@@ -111,7 +111,7 @@ type trayApp struct {
 	last    *trayView
 	stopped bool // run failed: keep showing the error until Quit
 
-	status, detail, pair, token *systray.MenuItem
+	status, detail, pair, token, logout *systray.MenuItem
 }
 
 func (t *trayApp) result() error {
@@ -133,6 +133,10 @@ func (t *trayApp) onReady() {
 	logItem := systray.AddMenuItem("Open log file", "Open the bridge log")
 	t.token = systray.AddMenuItem("Copy bridge token", "Copy the REST API bearer token to the clipboard")
 	systray.AddSeparator()
+	// The tray has no confirm dialog, so the submenu is the confirmation:
+	// one stray click cannot unlink the device.
+	t.logout = systray.AddMenuItem("Log out…", "Unlink this device from your phone")
+	confirmLogout := t.logout.AddSubMenuItem("Yes, unlink this device", "Unlinks the bridge and shows a new QR code. Stored messages are kept unless a different account links.")
 	quit := systray.AddMenuItem("Quit", "Disconnect and exit")
 
 	t.apply(deriveTrayView(nil), false)
@@ -154,6 +158,8 @@ func (t *trayApp) onReady() {
 				if rt := currentRuntime.Load(); rt != nil {
 					t.copyToClipboard(rt.token)
 				}
+			case <-confirmLogout.ClickedCh:
+				t.logoutDevice()
 			case <-quit.ClickedCh:
 				t.quit()
 				return
@@ -224,6 +230,31 @@ func (t *trayApp) apply(v trayView, final bool) {
 	} else {
 		t.token.Disable()
 	}
+	if v.CanLogout && !final {
+		t.logout.Enable()
+	} else {
+		t.logout.Disable()
+	}
+}
+
+// logoutDevice runs the same logout as POST /api/logout. The next poll shows
+// the result ("Logged out: re-pair", then "Waiting for QR scan").
+func (t *trayApp) logoutDevice() {
+	rt := currentRuntime.Load()
+	if rt == nil {
+		return
+	}
+	t.logout.Disable()
+	go func() {
+		fmt.Println("Tray: logging out")
+		if err := logoutSession(t.ctx, rt.sessions, "logged out from the tray"); err != nil {
+			fmt.Printf("Tray: logout failed: %v\n", err)
+			// Force the next poll to redraw, re-enabling the item.
+			t.mu.Lock()
+			t.last = nil
+			t.mu.Unlock()
+		}
+	}()
 }
 
 func (t *trayApp) quit() {

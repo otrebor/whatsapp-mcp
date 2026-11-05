@@ -43,6 +43,32 @@ func TestDeriveTrayView(t *testing.T) {
 	}
 }
 
+// Logout needs a live, logged-in connection (logoutSession refuses otherwise).
+func TestDeriveTrayView_CanLogoutOnlyWhenConnected(t *testing.T) {
+	for _, h := range []*healthSnapshot{
+		{PairingState: pairingPaired, Connected: true},
+		{PairingState: pairingPaired, Connected: true, OfflineSync: offlineSyncSnapshot{InProgress: true}},
+	} {
+		if !deriveTrayView(h).CanLogout {
+			t.Errorf("%+v: CanLogout = false, want true", h)
+		}
+	}
+	for _, h := range []*healthSnapshot{
+		nil,
+		{PairingState: pairingPaired},
+		{PairingState: pairingAwaitingScan},
+		{PairingState: pairingLoggedOut},
+		{PairingState: pairingPaired, Connected: true, RESTError: "bind"},
+	} {
+		if deriveTrayView(h).CanLogout {
+			t.Errorf("%+v: CanLogout = true, want false", h)
+		}
+	}
+	if stoppedTrayView(errors.New("x")).CanLogout {
+		t.Error("stopped view allows logout")
+	}
+}
+
 func TestStoppedTrayView(t *testing.T) {
 	v := stoppedTrayView(errors.New("failed to connect to database: locked"))
 	if v.Icon != trayIconRed || v.CanPair || !strings.Contains(v.Detail, "locked") {
