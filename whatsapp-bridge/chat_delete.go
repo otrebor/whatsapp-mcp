@@ -99,7 +99,7 @@ func registerChatDeleteEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) 
 		}
 		_, _ = messageStore.db.Exec(`DELETE FROM chats WHERE jid = ?`, chatJID.String())
 
-		fmt.Printf("← /api/chat-delete chat=%s local_messages_removed=%d\n", chatJID, removed)
+		fmt.Printf("← /api/chat-delete chat=%s local_messages_removed=%d\n", redact(chatJID), removed)
 		writeResp(http.StatusOK, true, fmt.Sprintf("Chat %s deleted for you (%d local messages removed)", chatJID, removed))
 	}))
 }

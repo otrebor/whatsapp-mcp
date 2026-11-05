@@ -707,11 +707,42 @@ Copy `.env.example` to `.env` and configure as needed:
 | `WHATSAPP_API_URL`     | `http://localhost:8080/api`              | Go bridge REST API URL                       |
 | `WHATSAPP_BRIDGE_TOKEN` | generated next to `WHATSMEOW_DB_PATH` as `.bridge-token` | Bearer token for bridge REST calls; also signed onto outbound webhook POSTs |
 | `WHATSAPP_MEDIA_ROOTS` | `~/.local/share/whatsapp-mcp/outbox`     | Path-list of directories allowed for outbound media files |
+| `WHATSAPP_LOG_LEVEL`   | `INFO`                                   | Bridge log level: `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. Below `TRACE` the log never contains message text, and phone numbers, JIDs and names show as per-run tags (`#3fa2c1@g.us`). `DEBUG` adds whatsmeow's protocol dump, which contains JIDs. `TRACE` also logs message content and identifiers. See [Logging and privacy](#logging-and-privacy) |
 | `WHATSAPP_DEVICE_NAME` | `<hostname> · WhatsApp MCP`              | Label shown for this connection under WhatsApp > Linked Devices. The default includes the computer's short hostname (sent to WhatsApp as part of the label), so several bridges can be told apart; set your own name to override. Applies at pair time only (re-pair to change) |
 | `WHATSAPP_MCP_TRANSPORT` | `stdio`                                | MCP transport to serve clients: `stdio`, `http`, or `sse` |
 | `WHATSAPP_MCP_HOST`    | `127.0.0.1`                              | Bind address for the `http`/`sse` transports |
 | `WHATSAPP_MCP_PORT`    | `8000`                                   | Port for the `http`/`sse` transports |
 | `WHATSAPP_PARENT_WATCHDOG_S` | `30`                              | Stdio parent-liveness poll interval (seconds); exits on parent reparent only |
+
+### Logging and privacy
+
+By default (`WHATSAPP_LOG_LEVEL=INFO`) the bridge log says *that* messages
+were received or sent, but not what they said or who was involved:
+
+```
+[2026-11-05 11:16:33] ← message received: id=3EB0C431D5A1 type=text
+→ /api/send recipient="#9c41e2@s.whatsapp.net" message_len=42 has_media=false
+```
+
+- **Identifiers become tags.** Phone numbers, JIDs and contact/group names are
+  replaced by a tag such as `#9c41e2@s.whatsapp.net`. Within one run the same
+  chat always gets the same tag, so you can follow it through the log. The salt
+  is random for each run, so tags can't be matched against a list of numbers.
+  The `@server` part is kept because it tells phone, LID and group JIDs apart.
+- **Media paths show only the file name.** Media is stored under
+  `store/<chat JID>/`, so the directory would name the chat.
+- **TRACE logs everything:** `WHATSAPP_LOG_LEVEL=TRACE` adds the full message
+  lines, history-sync content, chat name lookups and LID resolutions.
+  The bridge prints a warning at startup when TRACE is on. Use it only to
+  debug, then delete the log.
+- **DEBUG** turns on whatsmeow's protocol debug output. It doesn't contain
+  message text, but it does contain JIDs. Before this setting existed, DEBUG
+  was the default.
+- whatsmeow's own INFO and WARN lines can still mention your own account's
+  JID, for example at pairing time.
+
+Logs written before this change may still contain message content. Delete
+old log files if that matters to you.
 
 ### MCP transport (stdio vs http/sse)
 

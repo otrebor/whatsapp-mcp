@@ -214,7 +214,7 @@ func groupParticipantsHandler(sessions *sessionHolder, action whatsmeow.Particip
 			return
 		}
 
-		fmt.Printf("→ %s jid=%s participants=%d\n", path, jid, len(members))
+		fmt.Printf("→ %s jid=%s participants=%d\n", path, redact(jid), len(members))
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 		result, err := client.UpdateGroupParticipants(ctx, jid, members, action)
@@ -227,7 +227,7 @@ func groupParticipantsHandler(sessions *sessionHolder, action whatsmeow.Particip
 		if len(failed) > 0 {
 			msg += fmt.Sprintf("; could not %s: %s", verb, strings.Join(failed, ", "))
 		}
-		fmt.Printf("← %s jid=%s %s=%d failed=%d\n", path, jid, countKey, len(result)-len(failed), len(failed))
+		fmt.Printf("← %s jid=%s %s=%d failed=%d\n", path, redact(jid), countKey, len(result)-len(failed), len(failed))
 		writeResp(http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": msg,
@@ -314,7 +314,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			return
 		}
 
-		fmt.Printf("→ /api/group-leave jid=%s\n", jid)
+		fmt.Printf("→ /api/group-leave jid=%s\n", redact(jid))
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		if err := client.LeaveGroup(ctx, jid); err != nil {
@@ -370,7 +370,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 			writeResp(http.StatusBadGateway, false, fmt.Sprintf("Failed to set group description: %v", err))
 			return
 		}
-		fmt.Printf("← /api/group-topic jid=%s topic_len=%d\n", jid, len(req.Topic))
+		fmt.Printf("← /api/group-topic jid=%s topic_len=%d\n", redact(jid), len(req.Topic))
 		writeResp(http.StatusOK, true, "Group description updated")
 	}))
 
@@ -432,7 +432,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 		if len(failed) > 0 {
 			resp.Message = "Group created, but some participants could not be added: " + strings.Join(failed, ", ")
 		}
-		fmt.Printf("← /api/group-create jid=%s participants=%d failed=%d\n", info.JID, len(info.Participants), len(failed))
+		fmt.Printf("← /api/group-create jid=%s participants=%d failed=%d\n", redact(info.JID), len(info.Participants), len(failed))
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 
@@ -476,7 +476,7 @@ func registerGroupInfoEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) h
 		}
 
 		resp := groupInfoResponse(ctx, client, info)
-		fmt.Printf("← /api/group-info jid=%s participants=%d\n", jid, len(resp.Participants))
+		fmt.Printf("← /api/group-info jid=%s participants=%d\n", redact(jid), len(resp.Participants))
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 

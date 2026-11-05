@@ -129,7 +129,7 @@ func sendWebhookPayload(payload WebhookPayload) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 200 {
-		fmt.Printf("✓ Webhook sent for message from %s\n", payload.Sender)
+		fmt.Printf("✓ Webhook sent for message from %s\n", redact(payload.Sender))
 	} else {
 		fmt.Printf("⚠ Webhook failed with status %d\n", resp.StatusCode)
 	}
