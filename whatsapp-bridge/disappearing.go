@@ -63,7 +63,7 @@ func registerDisappearingTimerEndpoint(mux *http.ServeMux, auth func(http.Handle
 			return
 		}
 
-		fmt.Printf("→ /api/disappearing-timer chat=%s timer=%s\n", chatJID, timer)
+		fmt.Printf("→ /api/disappearing-timer chat=%s timer=%s\n", redact(chatJID), timer)
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		settingTS := time.Now()
@@ -75,7 +75,7 @@ func registerDisappearingTimerEndpoint(mux *http.ServeMux, auth func(http.Handle
 		// echo of the change would otherwise arrive a moment later.
 		seconds := uint32(timer.Seconds())
 		if err := messageStore.UpdateChatEphemeralSettings(chatJID.String(), seconds, settingTS.Unix()); err != nil {
-			fmt.Printf("Failed to store disappearing timer for %s: %v\n", chatJID, err)
+			fmt.Printf("Failed to store disappearing timer for %s: %v\n", redact(chatJID), err)
 		}
 
 		msg := "Disappearing messages turned off"

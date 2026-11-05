@@ -201,7 +201,7 @@ func registerHistoryEndpoint(mux *http.ServeMux, auth func(http.HandlerFunc) htt
 			return
 		}
 
-		fmt.Printf("← /api/history chat=%q count=%d anchor=%q\n", req.ChatJID, count, id)
+		fmt.Printf("← /api/history chat=%q count=%d anchor=%q\n", redact(req.ChatJID), count, id)
 		_ = json.NewEncoder(w).Encode(SendMessageResponse{
 			Success: true,
 			Message: fmt.Sprintf(

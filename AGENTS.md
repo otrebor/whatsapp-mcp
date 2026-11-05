@@ -103,6 +103,7 @@ A failing blocking job is a hard block — fix it or explain in the PR why it's 
 | `WHATSAPP_BRIDGE_TOKEN` | generated next to `WHATSMEOW_DB_PATH` as `.bridge-token` | Bearer token required for bridge REST calls |
 | `WHATSAPP_MEDIA_ROOTS` | `~/.local/share/whatsapp-mcp/outbox` | Path-list of directories allowed for outbound media files |
 | `WHATSAPP_DEVICE_NAME` | `<hostname> · WhatsApp MCP` (short hostname, max 32 chars; plain `WhatsApp MCP` if unknown) | Linked-device label shown in WhatsApp > Linked Devices. Applied at pair time only (`store.DeviceProps.Os`); re-pair to change |
+| `WHATSAPP_LOG_LEVEL` | `INFO` | Bridge log level: `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. Below `TRACE` no message text; phone numbers, JIDs and names are `redact()`ed to per-run tags. `DEBUG` enables whatsmeow's protocol dump (contains JIDs). `TRACE` logs content and identifiers (`tracef`). See `whatsapp-bridge/logging.go` |
 | `WHATSAPP_MCP_TRANSPORT` | `stdio` | MCP transport to serve clients: `stdio`, `http`, or `sse` |
 | `WHATSAPP_MCP_HOST` | `127.0.0.1` | Bind address for the `http`/`sse` transports |
 | `WHATSAPP_MCP_PORT` | `8000` | Port for the `http`/`sse` transports |
@@ -130,6 +131,7 @@ When adding a new env var: document it here, in `README.md`, and in `.env.exampl
 4. **History sync** is controlled by the *primary* device (the phone). The bridge can request more at pair time (see the `--full-history-pair` flag) or for a single chat at runtime (`POST /api/history`, see `history_ondemand.go`), but the phone has the final word.
 5. **`messages.db` is the source of truth for the MCP server.** Don't make the MCP server dependent on the bridge being up for *read* operations.
 6. **Outgoing calls are not visible to linked devices.** Don't promise features that depend on them.
+7. **Never log message content or who a message involves.** In the bridge, wrap JIDs, phone numbers and contact/group names in `redact()`, media paths in `redactPath()`, and text in `redactText()`. Use `tracef()` for lines that only make sense with that data (see `whatsapp-bridge/logging.go`). Message IDs, counts and lengths are fine to log.
 
 ## Where to make changes
 

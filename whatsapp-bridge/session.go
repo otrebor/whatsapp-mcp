@@ -327,7 +327,7 @@ func (m *sessionManager) waitDeviceGone(ctx context.Context, jid types.JID) {
 			return
 		}
 		if time.Now().After(deadline) {
-			m.logger.Warnf("Logged-out device %s is still in whatsapp.db (err: %v); a restart may try to reuse it", jid, err)
+			m.logger.Warnf("Logged-out device %s is still in whatsapp.db (err: %v); a restart may try to reuse it", redact(jid), err)
 			return
 		}
 		if !sleepCtx(ctx, m.deletePoll) {
