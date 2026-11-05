@@ -1,6 +1,8 @@
 # Plan: optional system tray UI for the bridge
 
-Status: proposed on `feat/tray-ui`. Tracking issue: [#12](https://github.com/otrebor/whatsapp-mcp/issues/12).
+Status: steps 1–2 implemented on `feat/tray-ui` (see "Implementation
+notes" at the end); release binaries (step 3) not started. Tracking issue:
+[#12](https://github.com/otrebor/whatsapp-mcp/issues/12).
 
 ## Problem
 
@@ -231,3 +233,27 @@ requires.
   MinGW toolchain? `history_ondemand.go` already handles timestamps from
   either driver.
 - Should autostart at login be a later PR, or is it out of scope?
+
+## Implementation notes
+
+Where the implementation differs from the design above:
+
+- **Icons are drawn in code** (`trayIconPNG` in `tray_state.go`), so there are
+  no embedded files. On Windows the PNG is wrapped in an ICO container
+  (`pngToICO`).
+- **No pairing code in the log.** Smoke testing showed whatsmeow logs the
+  pairing refs and the QR payload at DEBUG. Tray builds therefore:
+  - log at INFO without ANSI colors (`clientLogLevel`, `logColor`)
+  - skip the terminal QR (`terminalQR`)
+- **A startup failure keeps the tray up** with a red "Bridge stopped" item
+  and the error, so the user can open the log. Quit exits.
+- **Running state** is published through `currentRuntime` (sessions, store,
+  port, token) once the REST server starts. The REST bind error goes through
+  `restServerErr` into `healthSnapshot.RESTError`.
+- **`go run -tags tray .`** keeps the current directory: the binary lives in
+  a `go-build` temp directory, so it isn't used as the default `--workdir`.
+- **No headless fallback on Linux** when there's no tray host:
+  fyne.io/systray gives no reliable signal for it. The README documents the
+  GNOME AppIndicator requirement instead.
+- **Windows helpers** (`rundll32`, `clip`) are started with `CREATE_NO_WINDOW`
+  (`tray_windows.go`) so no console window flashes.

@@ -975,11 +975,52 @@ Uninstall preserves `whatsapp-bridge/store/`, including WhatsApp session DBs,
 message DBs, media, and `.bridge-token`. Logs are left in
 `~/Library/Logs/whatsapp-mcp/` for manual cleanup.
 
+### Tray icon (optional)
+
+Builds made with `-tags tray` run the bridge under a system tray / menu bar
+icon instead of a console. The default build is unchanged.
+
+```bash
+cd whatsapp-bridge
+go build -tags tray -o whatsapp-bridge-tray                                # macOS / Linux
+go build -tags tray -ldflags -H=windowsgui -o whatsapp-bridge-tray.exe     # Windows, no console window
+```
+
+The icon color shows the state: green = connected, amber = starting, syncing
+or waiting for a QR scan, grey = logged out or reconnecting, red = stopped or
+the API port is already in use. The menu has:
+
+- **Show pairing QR**: opens the [pairing page](http://127.0.0.1:8080/pairing)
+  in your browser with the token filled in. Enabled while not paired.
+- **Open store folder** / **Open log file**
+- **Copy bridge token**: copies the REST bearer token to the clipboard
+  (`clip`, `pbcopy`, `wl-copy` or `xclip`).
+- **Quit**: disconnects and exits, like Ctrl+C.
+
+How the tray build differs from the default build:
+
+- It switches to the executable's directory at startup, so `store/` sits next
+  to the binary however it was launched (Explorer, Finder, login item). Pass
+  `--workdir <dir>` to use another directory. `go run -tags tray .` keeps the
+  current directory.
+- All output goes to `store/bridge.log` (mode 0600). It's rotated to
+  `bridge.log.1` at startup once it's over 10 MB. Logging is at INFO without
+  colors, and the QR code is not drawn as text. Both would put a live pairing
+  code in the log file.
+- "Show pairing QR" passes the token to the browser on its command line, and
+  "Copy bridge token" puts it on the clipboard. Other programs running as
+  your user can read both, the same as `store/.bridge-token`.
+
+On Linux the icon uses the StatusNotifierItem (DBus) protocol. KDE, XFCE and
+most other desktops show it; stock GNOME needs the
+[AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/).
+
 ### CLI flags (Go bridge)
 
 | Flag                  | Default | Description                                                                                                                                                                                                                                                       |
 | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--full-history-pair` | `false` | Request full history at pair time. Only takes effect on a fresh pair (no existing `whatsapp.db`); no-op for already-paired sessions. The phone ultimately decides the actual history window sent — see [Requesting full history](#requesting-full-history) below. |
+| `--workdir`           | executable's directory | Tray builds only (`-tags tray`): directory that holds `store/`. See [Tray icon](#tray-icon-optional). |
 
 ### Requesting full history
 

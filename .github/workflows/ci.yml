@@ -54,6 +54,35 @@ jobs:
         with:
           version: v2.12.2
           working-directory: whatsapp-bridge
+      - name: golangci-lint (tray build)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: whatsapp-bridge
+          args: --build-tags tray
+
+  go-build-tray:
+    name: Go Build (tray, ${{ matrix.os }})
+    # Informational until the tray build has been stable for a while.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          cd whatsapp-bridge
+          go build -tags tray -v ./...
+          go test -tags tray -run 'Tray|PNGToICO|RotateLog|OpenAndClipboard|PairingPageURL|Health' ./...
 
   go-build:
     name: Go Build

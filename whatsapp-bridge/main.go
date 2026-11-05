@@ -2862,6 +2862,8 @@ func startRESTServer(sessions *sessionHolder, messageStore *MessageStore, port i
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("REST API server error: %v\n", err)
+			msg := err.Error()
+			restServerErr.Store(&msg)
 		}
 	}()
 }
@@ -2927,8 +2929,10 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := runBridge(ctx); err != nil {
-		waLog.Stdout("Client", "DEBUG", true).Errorf("%v", err)
+	// runUI is runBridge itself in the default build and the system tray in
+	// builds made with -tags tray (ui_headless.go / tray.go).
+	if err := runUI(ctx, stop, runBridge); err != nil {
+		waLog.Stdout("Client", clientLogLevel, logColor).Errorf("%v", err)
 	}
 }
 
@@ -2937,13 +2941,13 @@ func main() {
 // (see docs/plans/tray-ui.md) can report it.
 func runBridge(ctx context.Context) error {
 	// Set up logger with DEBUG level for more detailed logging
-	logger := waLog.Stdout("Client", "DEBUG", true)
+	logger := waLog.Stdout("Client", clientLogLevel, logColor)
 	logger.Infof("Starting WhatsApp client...")
 
 	logger.Infof("%s", webhookStartupMessage(forwardSelfMessages))
 
 	// Create database connection for storing session data
-	dbLog := waLog.Stdout("Database", "INFO", true)
+	dbLog := waLog.Stdout("Database", "INFO", logColor)
 
 	// Create directory for database if it doesn't exist. Owner-only (0700),
 	// same reasoning as NewMessageStore.
@@ -3093,7 +3097,9 @@ func runBridge(ctx context.Context) error {
 		},
 		renderQR: func(code string, w io.Writer) {
 			bridgePairing.setCode(code)
-			qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
+			if terminalQR {
+				qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
+			}
 		},
 		holder:          sessions,
 		logger:          logger,
@@ -3119,6 +3125,9 @@ func runBridge(ctx context.Context) error {
 		return err
 	}
 	startRESTServer(sessions, messageStore, port, bridgeToken, allowedMediaRoots)
+	// Cleared before messageStore closes (defers run last-in, first-out).
+	currentRuntime.Store(&bridgeRuntime{sessions: sessions, messageStore: messageStore, port: port, token: bridgeToken})
+	defer currentRuntime.Store(nil)
 
 	fmt.Println("REST server is running. Press Ctrl+C to disconnect and exit.")
 

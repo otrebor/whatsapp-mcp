@@ -59,7 +59,9 @@ If unsure whether something is in scope, **open an issue first**. Do not open a 
 cd whatsapp-bridge
 go run .                    # dev
 go build -o whatsapp-bridge && ./whatsapp-bridge   # release-ish
+go build -tags tray .       # optional system tray build (tray.go; see README "Tray icon")
 golangci-lint run           # lint
+golangci-lint run --build-tags tray   # lint the tray files too
 go test ./...               # tests (sparse today)
 
 # Python MCP server

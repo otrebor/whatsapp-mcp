@@ -1,8 +1,25 @@
 package main
 
 import (
+	"sync/atomic"
 	"time"
 )
+
+// restServerErr holds the REST server's ListenAndServe failure (for example
+// "address already in use"), or nil while it is serving.
+var restServerErr atomic.Pointer[string]
+
+// bridgeRuntime is what an in-process UI needs from a running bridge. It is
+// published once the REST server has started and cleared when runBridge
+// returns.
+type bridgeRuntime struct {
+	sessions     *sessionHolder
+	messageStore *MessageStore
+	port         int
+	token        string
+}
+
+var currentRuntime atomic.Pointer[bridgeRuntime]
 
 // healthSnapshot is the bridge's current state as reported by /api/health.
 // It is computed in one place so other in-process views of the bridge (see
@@ -15,6 +32,9 @@ type healthSnapshot struct {
 	OfflineSync    offlineSyncSnapshot
 	HistoryWipedAt time.Time // zero when history was never wiped
 	Timestamp      time.Time
+	// RESTError is set when the REST server failed to bind. Not part of the
+	// /api/health JSON: a caller that can read that JSON has a working server.
+	RESTError string
 }
 
 func bridgeHealth(sessions *sessionHolder, messageStore *MessageStore) healthSnapshot {
@@ -30,6 +50,9 @@ func bridgeHealth(sessions *sessionHolder, messageStore *MessageStore) healthSna
 	}
 	if wipedAt, ok := messageStore.historyWipedAt(); ok {
 		h.HistoryWipedAt = wipedAt
+	}
+	if e := restServerErr.Load(); e != nil {
+		h.RESTError = *e
 	}
 	return h
 }
