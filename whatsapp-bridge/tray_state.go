@@ -13,6 +13,7 @@ import (
 	"image/color"
 	"image/png"
 	"io/fs"
+	"math"
 	"net/url"
 	"os"
 )
@@ -99,24 +100,86 @@ var trayIconColors = map[trayIcon]color.NRGBA{
 
 const trayIconSize = 32
 
-// trayIconPNG draws a filled circle in the state's color with a white ring,
-// so it stays visible on both light and dark task bars.
+// Speech-bubble geometry in icon pixels: a round body with a tail pointing
+// to the bottom-left corner. The white outline is drawn outside this shape.
+var (
+	bubbleCenter = [2]float64{17, 15}
+	bubbleTail   = [3][2]float64{{4.5, 28}, {6.5, 19}, {13.5, 25.5}}
+)
+
+const (
+	bubbleRadius = 11.5
+	bubbleBorder = 2.0 // white outline width
+	bubbleSS     = 4   // supersamples per axis, for anti-aliasing
+)
+
+// bubbleSDF is the signed distance from (x, y) to the bubble: negative
+// inside, positive outside. Taking the min of the parts is exact outside
+// the shape, which is where the outline is drawn.
+func bubbleSDF(x, y float64) float64 {
+	circle := math.Hypot(x-bubbleCenter[0], y-bubbleCenter[1]) - bubbleRadius
+	return math.Min(circle, triangleSDF(x, y, bubbleTail))
+}
+
+// triangleSDF is the signed distance from (x, y) to triangle t.
+func triangleSDF(x, y float64, t [3][2]float64) float64 {
+	d := math.Inf(1)
+	inside := true
+	var sign float64
+	for i := range t {
+		ax, ay := t[i][0], t[i][1]
+		bx, by := t[(i+1)%3][0], t[(i+1)%3][1]
+		ex, ey := bx-ax, by-ay
+		px, py := x-ax, y-ay
+		h := math.Max(0, math.Min(1, (px*ex+py*ey)/(ex*ex+ey*ey)))
+		d = math.Min(d, math.Hypot(px-ex*h, py-ey*h))
+		// Inside a triangle means the same side of every edge.
+		cross := ex*py - ey*px
+		if i == 0 {
+			sign = cross
+		} else if cross*sign < 0 {
+			inside = false
+		}
+	}
+	if inside {
+		return -d
+	}
+	return d
+}
+
+// trayIconPNG draws a speech bubble in the state's color with a white
+// outline, so it stays visible on both light and dark task bars.
 func trayIconPNG(kind trayIcon) []byte {
 	fill := trayIconColors[kind]
-	ring := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 	img := image.NewNRGBA(image.Rect(0, 0, trayIconSize, trayIconSize))
-	c := float64(trayIconSize-1) / 2
-	outer, inner := c, c-2.5
+	const n = bubbleSS * bubbleSS
 	for y := 0; y < trayIconSize; y++ {
 		for x := 0; x < trayIconSize; x++ {
-			dx, dy := float64(x)-c, float64(y)-c
-			d2 := dx*dx + dy*dy
-			switch {
-			case d2 <= inner*inner:
-				img.SetNRGBA(x, y, fill)
-			case d2 <= outer*outer:
-				img.SetNRGBA(x, y, ring)
+			var shape, body int
+			for sy := 0; sy < bubbleSS; sy++ {
+				for sx := 0; sx < bubbleSS; sx++ {
+					d := bubbleSDF(
+						float64(x)+(float64(sx)+0.5)/bubbleSS,
+						float64(y)+(float64(sy)+0.5)/bubbleSS,
+					)
+					if d <= bubbleBorder {
+						shape++
+					}
+					if d <= 0 {
+						body++
+					}
+				}
 			}
+			if shape == 0 {
+				continue
+			}
+			// Mix white (outline) with the fill by the share of body samples.
+			t := float64(body) / float64(shape)
+			mix := func(c uint8) uint8 { return uint8(math.Round(255 + (float64(c)-255)*t)) }
+			img.SetNRGBA(x, y, color.NRGBA{
+				R: mix(fill.R), G: mix(fill.G), B: mix(fill.B),
+				A: uint8(math.Round(255 * float64(shape) / n)),
+			})
 		}
 	}
 	var buf bytes.Buffer
