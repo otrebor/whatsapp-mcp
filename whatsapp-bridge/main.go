@@ -2444,28 +2444,12 @@ func newRESTMux(sessions *sessionHolder, messageStore *MessageStore, port int, t
 
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
-		client := sessions.current()
+		h := bridgeHealth(sessions, messageStore)
 		w.Header().Set("Content-Type", "application/json")
-		pairing := bridgePairing.snapshot()
-		status := map[string]interface{}{
-			"status":        "ok",
-			"connected":     whatsappReady(client),
-			"logged_in":     client.Store.ID != nil,
-			"pairing_state": pairing.State,
-			"offline_sync":  bridgeOfflineSync.snapshot(),
-			"timestamp":     time.Now().Unix(),
-		}
-		if pairing.LastError != "" {
-			status["pairing_error"] = pairing.LastError
-		}
-		if wipedAt, ok := messageStore.historyWipedAt(); ok {
-			status["history_wiped_at"] = wipedAt.Unix()
-		}
-		if !whatsappReady(client) {
-			status["status"] = "disconnected"
+		if !h.Connected {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		_ = json.NewEncoder(w).Encode(status)
+		_ = json.NewEncoder(w).Encode(healthJSON(h))
 	}))
 
 	// Handler for sending messages
@@ -2878,6 +2862,8 @@ func startRESTServer(sessions *sessionHolder, messageStore *MessageStore, port i
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("REST API server error: %v\n", err)
+			msg := err.Error()
+			restServerErr.Store(&msg)
 		}
 	}()
 }
@@ -2941,26 +2927,37 @@ func renderPairingQRCodes(qrChan <-chan whatsmeow.QRChannelItem, w io.Writer, re
 func main() {
 	flag.Parse()
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	// runUI is runBridge itself in the default build and the system tray in
+	// builds made with -tags tray (ui_headless.go / tray.go).
+	if err := runUI(ctx, stop, runBridge); err != nil {
+		waLog.Stdout("Client", clientLogLevel, logColor).Errorf("%v", err)
+	}
+}
+
+// runBridge runs the bridge until ctx is cancelled (Ctrl+C / SIGTERM). A
+// startup failure is returned instead of logged so callers other than main
+// (see docs/plans/tray-ui.md) can report it.
+func runBridge(ctx context.Context) error {
 	// Set up logger with DEBUG level for more detailed logging
-	logger := waLog.Stdout("Client", "DEBUG", true)
+	logger := waLog.Stdout("Client", clientLogLevel, logColor)
 	logger.Infof("Starting WhatsApp client...")
 
 	logger.Infof("%s", webhookStartupMessage(forwardSelfMessages))
 
 	// Create database connection for storing session data
-	dbLog := waLog.Stdout("Database", "INFO", true)
+	dbLog := waLog.Stdout("Database", "INFO", logColor)
 
 	// Create directory for database if it doesn't exist. Owner-only (0700),
 	// same reasoning as NewMessageStore.
 	if err := ensureOwnerOnlyDirectory("store"); err != nil {
-		logger.Errorf("Failed to create store directory: %v", err)
-		return
+		return fmt.Errorf("failed to create store directory: %w", err)
 	}
 
 	container, err := sqlstore.New(context.Background(), "sqlite3", "file:store/whatsapp.db?_foreign_keys=on", dbLog)
 	if err != nil {
-		logger.Errorf("Failed to connect to database: %v", err)
-		return
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	// Optionally request a full history sync at pair time.
@@ -3005,19 +3002,16 @@ func main() {
 	// Initialize message store
 	messageStore, err := NewMessageStore()
 	if err != nil {
-		logger.Errorf("Failed to initialize message store: %v", err)
-		return
+		return fmt.Errorf("failed to initialize message store: %w", err)
 	}
 	defer func() { _ = messageStore.Close() }()
 
 	if err := messageStore.MigrateLegacyLIDChatsToPhoneJIDs("store/whatsapp.db", logger); err != nil {
-		logger.Errorf("Failed to migrate legacy LID chat rows: %v", err)
-		return
+		return fmt.Errorf("failed to migrate legacy LID chat rows: %w", err)
 	}
 
 	if err := messageStore.MigrateLegacyLIDSendersToPhones("store/whatsapp.db", logger); err != nil {
-		logger.Errorf("Failed to migrate legacy LID sender rows: %v", err)
-		return
+		return fmt.Errorf("failed to migrate legacy LID sender rows: %w", err)
 	}
 
 	// Resolve the REST API port. Pure env parsing with no dependency on the
@@ -3028,8 +3022,7 @@ func main() {
 	if p := os.Getenv("WHATSAPP_BRIDGE_PORT"); p != "" {
 		v, err := strconv.Atoi(p)
 		if err != nil || v < 1 || v > 65535 {
-			logger.Errorf("Invalid WHATSAPP_BRIDGE_PORT=%q, must be 1-65535", p)
-			return
+			return fmt.Errorf("invalid WHATSAPP_BRIDGE_PORT=%q, must be 1-65535", p)
 		}
 		port = v
 	}
@@ -3044,8 +3037,7 @@ func main() {
 	// token attached.
 	bridgeToken, fresh, tokErr := loadOrCreateBridgeToken()
 	if tokErr != nil {
-		logger.Errorf("Failed to initialize bridge token: %v", tokErr)
-		return
+		return fmt.Errorf("failed to initialize bridge token: %w", tokErr)
 	}
 	webhookAuthToken = bridgeToken
 
@@ -3070,8 +3062,7 @@ func main() {
 	// live under. See media_path.go for the rationale.
 	allowedMediaRoots, mrErr := resolveMediaRoots()
 	if mrErr != nil {
-		logger.Errorf("Failed to resolve media roots: %v", mrErr)
-		return
+		return fmt.Errorf("failed to resolve media roots: %w", mrErr)
 	}
 	logger.Infof("Allowed media roots: %v", allowedMediaRoots)
 
@@ -3106,7 +3097,9 @@ func main() {
 		},
 		renderQR: func(code string, w io.Writer) {
 			bridgePairing.setCode(code)
-			qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
+			if terminalQR {
+				qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
+			}
 		},
 		holder:          sessions,
 		logger:          logger,
@@ -3120,24 +3113,30 @@ func main() {
 		maxReconnect:    5 * time.Minute,
 	}
 
+	// Ctrl+C during the setup above: stop before connecting to WhatsApp.
+	if ctx.Err() != nil {
+		return nil
+	}
+
 	// Create the first client before the REST server starts, so handlers
 	// never see a nil client.
 	first, err := manager.newSession(false)
 	if err != nil {
-		logger.Errorf("%v", err)
-		return
+		return err
 	}
 	startRESTServer(sessions, messageStore, port, bridgeToken, allowedMediaRoots)
+	// Cleared before messageStore closes (defers run last-in, first-out).
+	currentRuntime.Store(&bridgeRuntime{sessions: sessions, messageStore: messageStore, port: port, token: bridgeToken})
+	defer currentRuntime.Store(nil)
 
 	fmt.Println("REST server is running. Press Ctrl+C to disconnect and exit.")
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	// Runs until Ctrl+C. A logout starts a new session (and QR code) in this
 	// process instead of exiting.
 	manager.run(ctx, first)
 
 	fmt.Println("Disconnecting...")
+	return nil
 }
 
 // newEventHandler handles one session's WhatsApp events. sig reports
