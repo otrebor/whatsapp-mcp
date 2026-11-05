@@ -6,8 +6,9 @@ This file is the single source of truth for "how to contribute here". `CLAUDE.md
 
 ## Repository
 
-- **Repo:** [`verygoodplugins/whatsapp-mcp`](https://github.com/verygoodplugins/whatsapp-mcp)
-- **Origin remote:** always `origin` (this fork). PRs, issues, and `gh` commands target this fork, not the upstream `lharries/whatsapp-mcp`.
+- **Repo:** [`otrebor/whatsapp-mcp`](https://github.com/otrebor/whatsapp-mcp), a fork of [`verygoodplugins/whatsapp-mcp`](https://github.com/verygoodplugins/whatsapp-mcp) (itself a fork of `lharries/whatsapp-mcp`).
+- **Origin remote:** always `origin` (`otrebor/whatsapp-mcp`). PRs, issues, pushes, and `gh` commands target this fork only, never `verygoodplugins/whatsapp-mcp` or `lharries/whatsapp-mcp`.
+- **PR base:** GitHub defaults a fork's PR base to the parent repo. Always set it explicitly: `gh pr create --repo otrebor/whatsapp-mcp --base main`, or `https://github.com/otrebor/whatsapp-mcp/compare/main...<branch>?expand=1`. Don't use the `pull/new/<branch>` link printed by `git push`, because it opens against the parent repo.
 - **Default branch:** `main`. All PRs target `main`.
 - **Releases:** automated via [release-please](https://github.com/googleapis/release-please) — do **not** hand-edit `CHANGELOG.md` or version numbers.
 
