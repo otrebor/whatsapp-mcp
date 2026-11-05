@@ -1,6 +1,6 @@
 # Plan: optional system tray UI for the bridge
 
-Status: proposed on `feat/tray-ui`. Tracking issue: TBD.
+Status: proposed on `feat/tray-ui`. Tracking issue: [#12](https://github.com/otrebor/whatsapp-mcp/issues/12).
 
 ## Problem
 
